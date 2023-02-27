@@ -3,7 +3,7 @@ defmodule CaddyServer do
   Documentation for `CaddyServer`.
   """
 
-  @version "2.6.4"
+  @default_version "2.6.4"
 
   @doc """
   Start Caddy server at
@@ -16,11 +16,10 @@ defmodule CaddyServer do
   CaddyServer.start()
   ```
 
-  To start server, libevent must be installed.
   """
   def start() do
-    File.mkdir_p(Application.app_dir(:caddy_server, "priv") <> "/etc")
-    f = Application.app_dir(:caddy_server, "priv") <> "/etc/Caddyfile"
+    File.mkdir_p(priv_dir("/etc"))
+    f = priv_dir("/etc/Caddyfile")
     File.write!(f, caddyfile())
 
     port =
@@ -28,6 +27,21 @@ defmodule CaddyServer do
         {:spawn_executable, cmd()},
         args: ["run", "--adapter", "caddyfile", "--config", f]
       )
+
+    port
+  end
+
+  @doc """
+  Return Caddy Version from ` Application.get_env(:caddy_server, CaddyServer) |> Keyword.get(:version)`
+
+  if not defined, use `@default_version` instead
+
+  """
+  def version() do
+    case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:version) do
+      {:ok, version} -> version
+      :error -> @default_version
+    end
   end
 
   def caddyfile() do
@@ -43,93 +57,37 @@ defmodule CaddyServer do
   end
 
   def cmd() do
-    p = Application.app_dir(:caddy_server, "priv")
-    caddy_cmd = p <> "/bin/caddy"
+    path =
+      case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:bin_path) do
+        :error ->
+          if CaddyServer.Downloader.auto?() do
+            0 = CaddyServer.Downloader.download()
+            CaddyServer.Downloader.downloaded_bin()
+          else
+            ""
+          end
 
-    unless File.exists?(caddy_cmd) do
-      IO.puts("cmd not exists, downloading...")
+        {:ok, nil} ->
+          if CaddyServer.Downloader.auto?() do
+            0 = CaddyServer.Downloader.download()
+            CaddyServer.Downloader.downloaded_bin()
+          else
+            ""
+          end
 
-      case download() do
-        0 -> caddy_cmd
-        _ -> :error
+        {:ok, bin_path} ->
+          bin_path
       end
+
+    if File.exists?(path) do
+      path
     else
-      caddy_cmd
+      raise "No Caddy command found"
     end
   end
 
-  @doc """
-  Download caddy from Github
-
-  https://github.com/caddyserver/caddy/releases
-
-  ## Examples
-
-      iex> CaddyServer.download()
-      0
-
-  """
-  def download() do
-    (Application.app_dir(:caddy_server, "priv") <> "/bin") |> File.mkdir_p()
-
-    body =
-      case System.fetch_env("HTTP_PROXY") do
-        {:ok, proxy} ->
-          %HTTPoison.Response{status_code: 200, body: body} =
-            download_url()
-            |> HTTPoison.get!([], proxy: {"10.100.0.1", 3128}, follow_redirect: true)
-
-          body
-
-        :error ->
-          %HTTPoison.Response{status_code: 200, body: body} =
-            download_url() |> HTTPoison.get!([], follow_redirect: true)
-
-          body
-      end
-
-    p = Application.app_dir(:caddy_server, "priv")
-    f = p <> "/" <> filename()
-
-    File.write!(f, body)
-
-    {_, code} = System.cmd("tar", ["zxf", f, "-C", p, "caddy"])
-    File.mkdir_p(Application.app_dir(:caddy_server, "priv") <> "/bin")
-    System.cmd("mv", ["#{p}/caddy", "#{p}/bin/caddy"])
-
-    code
+  defp priv_dir(p) do
+    Application.app_dir(:caddy_server, "priv#{p}")
   end
 
-  def download_url() do
-    "https://github.com/caddyserver/caddy/releases/download/v#{@version}/" <> filename()
-  end
-
-  def filename() do
-    {os, arch} = os_arch()
-    "caddy_#{@version}_#{os}_#{arch}.tar.gz"
-  end
-
-  def os_arch() do
-    {arch, os_str} =
-      case :erlang.system_info(:system_architecture) |> to_string() do
-        "aarch64-" <> os_info ->
-          {"arm64", os_info}
-
-        "x86_64-" <> os_info ->
-          {"amd64", os_info}
-
-        _ ->
-          IO.puts("unsupported")
-          :error
-      end
-
-    {ostype} =
-      cond do
-        String.contains?(os_str, "darwin") -> {"mac"}
-        String.contains?(os_str, "linux") -> {"linux"}
-        true -> :error
-      end
-
-    {ostype, arch}
-  end
 end
