@@ -19,6 +19,7 @@ import Config
 config :caddy_server, CaddyServer,
   version: "2.6.4",
   auto_download: true,
+  control_socket: nil,
   bin_path: nil
 
 config :logger,
