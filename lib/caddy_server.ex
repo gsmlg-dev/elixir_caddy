@@ -3,39 +3,25 @@ defmodule CaddyServer do
   Documentation for `CaddyServer`.
   """
 
+  alias CaddyServer.Downloader
+  alias CaddyServer.AdminSocket
   require Logger
+  use GenServer
 
   @default_version "2.6.4"
 
-  @doc """
-  Start Caddy server at
-
-  Accept accesss from `127.0.0.1/8`
-
-  Start server with
-
-  ```
-  CaddyServer.start()
-  ```
-
-  """
   def start() do
-    File.mkdir_p(priv_dir("/etc"))
-    f = priv_dir("/etc/Caddyfile")
+    GenServer.start(__MODULE__, [], name: __MODULE__)
+  end
 
-    Logger.info("Write Caddyfile")
-    Logger.debug("Caddyfile:\n#{caddyfile()}")
-    File.write!(f, caddyfile())
+  def get_state() do
+    GenServer.call(__MODULE__, :get_state)
+  end
 
-    Logger.info("Staring Caddy Server...")
-
-    port =
-      Port.open(
-        {:spawn_executable, cmd()},
-        args: ["run", "--adapter", "caddyfile", "--config", f]
-      )
-
-    port
+  def stop() do
+    {:os_pid, pid} = CaddyServer.get_state() |> Map.get(:port) |> Port.info(:os_pid)
+    {_, code} = System.cmd("kill", ["#{pid}"])
+    code
   end
 
   @doc """
@@ -65,8 +51,8 @@ defmodule CaddyServer do
 
   def cmd() do
     path =
-      if CaddyServer.Downloader.downloaded_bin() |> File.exists?() do
-        CaddyServer.Downloader.downloaded_bin()
+      if Downloader.downloaded_bin() |> File.exists?() do
+        Downloader.downloaded_bin()
       else
         case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:bin_path) do
           {:ok, bin_path} when is_binary(bin_path) ->
@@ -74,9 +60,9 @@ defmodule CaddyServer do
             bin_path
 
           _ ->
-            if CaddyServer.Downloader.auto?() do
-              0 = CaddyServer.Downloader.download()
-              CaddyServer.Downloader.downloaded_bin()
+            if Downloader.auto?() do
+              0 = Downloader.download()
+              Downloader.downloaded_bin()
             else
               ""
             end
@@ -91,68 +77,79 @@ defmodule CaddyServer do
   end
 
   def control_socket() do
-    case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:control_socket) do
-      {:ok, socket} when is_binary(socket) ->
-        Logger.debug("using socket setted in application env: #{socket}")
-        socket
-
-      _ ->
-        create_socket_path()
-    end
+    AdminSocket.socket_path()
   end
 
-  defp create_socket_path() do
-    rp = "unix//var/run/caddy_admin.sock"
-
-    if check_write_perm(cut_prefix(rp)) do
-      Logger.debug("using socket: #{rp}")
-      p = Path.dirname(rp)
-
-      unless File.exists?(p) do
-        :ok = File.mkdir_p(p)
-      end
-
-      rp
-    else
-      up = "unix/#{System.get_env("HOME")}/.local/run/caddy_admin.sock"
-      Logger.debug("using socket: #{up}")
-      p = Path.dirname(up)
-
-      unless File.exists?(p) do
-        :ok = File.mkdir_p(p)
-      end
-
-      up
-    end
+  def start_link(_) do
+    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
 
-  defp check_write_perm(f) do
-    if File.exists?(f) do
-      perm = has_write_perm?(f)
-      # Logger.debug("checking write perm: #{f} | #{perm}")
-      perm
-    else
-      p = Path.dirname(f)
-      check_write_perm(p)
-    end
+  def init(_init) do
+    state = %{port: nil}
+    # your trap_exit call should be here
+    Process.flag(:trap_exit, true)
+    {:ok, state, {:continue, :start_server}}
   end
 
-  defp has_write_perm?(f) do
-    Logger.debug("#{f}: #{inspect(File.stat(f))}")
+  def handle_continue(:start_server, state) do
+    File.mkdir_p(priv_dir("/etc"))
+    f = priv_dir("/etc/Caddyfile")
 
-    case File.stat(f) do
-      {:ok, %File.Stat{access: :read_write}} -> true
-      {:ok, %File.Stat{access: :write}} -> true
-      _ -> false
-    end
+    Logger.info("Write Caddyfile")
+    Logger.debug("Caddyfile:\n#{caddyfile()}")
+    File.write!(f, caddyfile())
+
+    Logger.info("Staring Caddy Server...")
+
+    port =
+      Port.open(
+        {:spawn_executable, cmd()},
+        [
+          {:args, ["run", "--adapter", "caddyfile", "--config", f]},
+          :stream,
+          :binary,
+          :exit_status,
+          :hide,
+          :use_stdio,
+          :stderr_to_stdout
+        ]
+      )
+
+    state = Map.put(state, :port, port)
+    {:noreply, state}
   end
 
-  defp cut_prefix(p) do
-    if String.slice(p, 0, 5) == "unix/" do
-      String.slice(p, 5, String.length(p))
-    else
-      p
-    end
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_info({port, {:data, msg}}, state) do
+    Logger.info("Caddy#{inspect(port)}: #{msg}")
+    {:noreply, state}
+  end
+
+  def handle_info({port, {:exit_status, exit_status}}, state) do
+    Logger.info("Caddy#{inspect(port)}: exit_status: #{exit_status}")
+    {:noreply, state}
+  end
+
+  # handle the trapped exit call
+  def handle_info({:EXIT, _from, reason}, state) do
+    Logger.info("exiting")
+    cleanup(reason, state)
+    # see GenServer docs for other return types
+    {:stop, reason, state}
+  end
+
+  # handle termination
+  def terminate(reason, state) do
+    Logger.info("terminating")
+    cleanup(reason, state)
+    state
+  end
+
+  defp cleanup(_reason, _state) do
+    # Cleanup whatever you need cleaned up
   end
 
   defp priv_dir(p) do
