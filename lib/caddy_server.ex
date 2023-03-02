@@ -148,8 +148,15 @@ defmodule CaddyServer do
     state
   end
 
-  defp cleanup(_reason, _state) do
-    # Cleanup whatever you need cleaned up
+  defp cleanup(_reason, state) do
+    case state |> Map.get(:port) |> Port.info(:os_pid) do
+      {:os_pid, pid} ->
+        {_, code} = System.cmd("kill", ["#{pid}"])
+        code
+
+      _ ->
+        0
+    end
   end
 
   defp priv_dir(p) do
