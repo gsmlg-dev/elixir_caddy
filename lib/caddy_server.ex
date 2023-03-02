@@ -46,7 +46,23 @@ defmodule CaddyServer do
       }
     }
 
+    #{site_conf()}
+
     """
+  end
+
+  def global_conf() do
+    case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:global_conf) do
+      {:ok, conf} -> conf
+      :error -> ""
+    end
+  end
+
+  def site_conf() do
+    case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:site_conf) do
+      {:ok, conf} -> conf
+      :error -> ""
+    end
   end
 
   def cmd() do
