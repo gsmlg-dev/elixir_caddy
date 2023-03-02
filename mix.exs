@@ -5,7 +5,7 @@ defmodule CaddyServer.MixProject do
     [
       app: :caddy_server,
       version: "0.1.0",
-      elixir: ">= 1.12",
+      elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       name: "CaddyServer",
       description: "Start a Caddy HTTP Server",
