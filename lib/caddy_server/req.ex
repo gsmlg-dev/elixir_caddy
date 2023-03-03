@@ -1,34 +1,7 @@
 defmodule CaddyServer.Req do
   @moduledoc """
-  Caddy Admin API
 
-  ```
-  POST /load Sets or replaces the active configuration
-
-  POST /stop Stops the active configuration and exits the process
-
-  GET /config/[path] Exports the config at the named path
-
-  POST /config/[path] Sets or replaces object; appends to array
-
-  PUT /config/[path] Creates new object; inserts into array
-
-  PATCH /config/[path] Replaces an existing object or array element
-
-  DELETE /config/[path] Deletes the value at the named path
-
-  Using @id in JSON Easily traverse into the config structure
-
-  Concurrent config changes Avoid collisions when making unsynchronized changes to config
-
-  POST /adapt Adapts a configuration to JSON without running it
-
-  GET /pki/ca/<id> Returns information about a particular PKI app CA
-
-  GET /pki/ca/<id>/certificates Returns the certificate chain of a particular PKI app CA
-
-  GET /reverse_proxy/upstreams Returns the current status of the configured proxy upstreams
-  ```
+  Req, send request through socket
 
   """
 
@@ -54,8 +27,82 @@ defmodule CaddyServer.Req do
         {:packet, :http_bin}
       ])
 
-    req_raw = "GET #{path} HTTP/1.1\r\nHost: caddy-admin.local\r\n\r\n"
-    :gen_tcp.send(socket, req_raw)
+    req_raw_header = "GET #{path} HTTP/1.1\r\nHost: caddy-admin.local\r\n\r\n"
+    :gen_tcp.send(socket, req_raw_header)
+    do_recv(socket)
+  end
+
+  def post(path, data, content_type \\ "application/json") do
+    unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
+
+    {:ok, socket} =
+      :gen_tcp.connect({:local, unix_path}, 0, [
+        :binary,
+        {:active, false},
+        {:packet, :http_bin}
+      ])
+
+    req_raw_header =
+      "POST #{path} HTTP/1.1\r\nHost: caddy-admin.local\r\nContent-Type: #{content_type}\r\n\r\n"
+
+    :gen_tcp.send(socket, req_raw_header)
+    :gen_tcp.send(socket, data)
+    do_recv(socket)
+  end
+
+  def patch(path, data, content_type \\ "application/json") do
+    unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
+
+    {:ok, socket} =
+      :gen_tcp.connect({:local, unix_path}, 0, [
+        :binary,
+        {:active, false},
+        {:packet, :http_bin}
+      ])
+
+    req_raw_header =
+      "PATCH #{path} HTTP/1.1\r\nHost: caddy-admin.local\r\nContent-Type: #{content_type}\r\n\r\n"
+
+    :gen_tcp.send(socket, req_raw_header)
+    :gen_tcp.send(socket, data)
+    do_recv(socket)
+  end
+
+  @spec put(binary(), binary()) ::
+          {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | Map.t()}
+  def put(path, data, content_type \\ "application/json") do
+    unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
+
+    {:ok, socket} =
+      :gen_tcp.connect({:local, unix_path}, 0, [
+        :binary,
+        {:active, false},
+        {:packet, :http_bin}
+      ])
+
+    req_raw_header =
+      "PUT #{path} HTTP/1.1\r\nHost: caddy-admin.local\r\nContent-Type: #{content_type}\r\n\r\n"
+
+    :gen_tcp.send(socket, req_raw_header)
+    :gen_tcp.send(socket, data)
+    do_recv(socket)
+  end
+
+  def delete(path, data, content_type \\ "application/json") do
+    unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
+
+    {:ok, socket} =
+      :gen_tcp.connect({:local, unix_path}, 0, [
+        :binary,
+        {:active, false},
+        {:packet, :http_bin}
+      ])
+
+    req_raw_header =
+      "DELETE #{path} HTTP/1.1\r\nHost: caddy-admin.local\r\nContent-Type: #{content_type}\r\n\r\n"
+
+    :gen_tcp.send(socket, req_raw_header)
+    :gen_tcp.send(socket, data)
     do_recv(socket)
   end
 
