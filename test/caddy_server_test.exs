@@ -2,8 +2,15 @@ defmodule CaddyServerTest do
   use ExUnit.Case
   doctest CaddyServer
 
-  test "test caddy download url" do
-    assert CaddyServer.download_url() =~
-             "https://github.com/caddyserver/caddy/releases/download/v2.6.4/caddy_2.6.4_"
+  test "test caddy server version" do
+    assert CaddyServer.version() =~ "2.6.4"
+  end
+
+  test "test caddy server cmd" do
+    assert CaddyServer.cmd() =~ "priv/bin/caddy"
+  end
+
+  test "test caddyfile" do
+    assert CaddyServer.caddyfile() =~ "admin unix//"
   end
 end

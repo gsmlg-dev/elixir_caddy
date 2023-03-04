@@ -25,12 +25,18 @@ defmodule CaddyServer.Command do
 
   alias CaddyServer.Req
 
+  @doc """
+  Get info from caddy server
+  """
   def get(path) do
     {:ok, resp, body} = Req.get("#{path}")
     resp |> Map.put(:body, body)
   end
 
-  @spec load(any) :: CaddyServer.Req.t()
+  @doc """
+  Sets or replaces the active configuration
+  """
+  @spec load(Map.t() | String.t()) :: CaddyServer.Req.t()
   def load(conf) when is_map(conf) do
     conf
     |> Map.put("admin", CaddyServer.Command.get_config("admin"))
@@ -43,11 +49,17 @@ defmodule CaddyServer.Command do
     resp |> Map.put(:body, body)
   end
 
+  @doc """
+  Stops the active configuration and exits the process
+  """
   def stop() do
     {:ok, resp, body} = Req.post("/stop", "")
     resp |> Map.put(:body, body)
   end
 
+  @doc """
+  Exports the config at the named path
+  """
   def get_config(path) do
     {:ok, resp, body} = Req.get("/config/#{path}")
     resp |> Map.put(:body, body)
@@ -60,6 +72,10 @@ defmodule CaddyServer.Command do
     resp.body
   end
 
+  @doc """
+  Adapts a configuration to JSON without running it
+  """
+  @spec adapt(binary) :: Map.t()
   def adapt(conf) do
     {:ok, _resp, json_conf} = Req.post("/adapt", conf)
     json_conf

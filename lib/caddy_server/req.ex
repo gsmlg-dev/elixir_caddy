@@ -11,12 +11,9 @@ defmodule CaddyServer.Req do
 
   defstruct status: 0, headers: [], body: ""
 
-  # Send requests to the docker daemon.
-  # request("GET", "/containers/json")
-  # request("POST", "/containers/abc/attach?stream=1&stdin=1&stdout=1")
-  #
-  # To post data you need to add a Content-Type and a Content-Length header to the
-  # request and then send the data to the socket
+  @doc """
+  Send HTTP GET method to admin socket
+  """
   def get(path) do
     unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
 
@@ -32,6 +29,9 @@ defmodule CaddyServer.Req do
     do_recv(socket)
   end
 
+  @doc """
+  Send HTTP POST method to admin socket
+  """
   def post(path, data, content_type \\ "application/json") do
     unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
 
@@ -50,6 +50,9 @@ defmodule CaddyServer.Req do
     do_recv(socket)
   end
 
+  @doc """
+  Send HTTP PATCH method to admin socket
+  """
   def patch(path, data, content_type \\ "application/json") do
     unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
 
@@ -68,7 +71,10 @@ defmodule CaddyServer.Req do
     do_recv(socket)
   end
 
-  @spec put(binary(), binary()) ::
+  @doc """
+  Send HTTP PUT method to admin socket
+  """
+  @spec put(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | Map.t()}
   def put(path, data, content_type \\ "application/json") do
     unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
@@ -88,7 +94,12 @@ defmodule CaddyServer.Req do
     do_recv(socket)
   end
 
-  def delete(path, data, content_type \\ "application/json") do
+  @doc """
+  Send HTTP DELETE method to admin socket
+  """
+  @spec delete(binary(), binary(), binary()) ::
+          {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | Map.t()}
+  def delete(path, data \\ "", content_type \\ "application/json") do
     unix_path = AdminSocket.socket_path() |> String.replace(~r/^unix\//, "")
 
     {:ok, socket} =
@@ -106,37 +117,17 @@ defmodule CaddyServer.Req do
     do_recv(socket)
   end
 
-  # Reads from tty. In case of non tty you need to read
-  # {:packet, :raw} and decode as described under Stream Format here: https://docs.docker.com/engine/api/v1.40/#operation/ContainerAttach
-  # For now just read lines from TTY or timeout after 5 seconds if nothing to be read
-  # This requires an attached socket:
-  # {:stream, _, socket} = request("POST", "/containers/abc/attach?stream=1&stdin=1&stdout=1")
-  # read_stream(socket)
-  def read_stream(socket) do
-    :inet.setopts(socket, [{:packet, :line}])
-    :gen_tcp.recv(socket, 0, 5000)
-  end
+  defp do_recv(socket), do: do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Req{})
 
-  # Writes to attached container
-  # This requires an attached socket:
-  # {:stream, _, socket} = request("POST", "/containers/abc/attach?stream=1&stdin=1&stdout=1")
-  # write_stream(socket, "echo \"Hello World\"\r\n")
-  # read_stream(socket)
-  def write_stream(socket, data) do
-    :gen_tcp.send(socket, data)
-  end
-
-  def do_recv(socket), do: do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Req{})
-
-  def do_recv(socket, {:ok, {:http_response, {1, 1}, code, _}}, resp) do
+  defp do_recv(socket, {:ok, {:http_response, {1, 1}, code, _}}, resp) do
     do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Req{resp | status: code})
   end
 
-  def do_recv(socket, {:ok, {:http_header, _, h, _, v}}, resp) do
+  defp do_recv(socket, {:ok, {:http_header, _, h, _, v}}, resp) do
     do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Req{resp | headers: [{h, v} | resp.headers]})
   end
 
-  def do_recv(socket, {:ok, :http_eoh}, resp) do
+  defp do_recv(socket, {:ok, :http_eoh}, resp) do
     # Now we only have body left.
     # # Depending on headers here you may want to do different things.
     # # The response might be chunked, or upgraded in case you have attached to the container
@@ -147,7 +138,7 @@ defmodule CaddyServer.Req do
     end
   end
 
-  def read_body(socket, resp) do
+  defp read_body(socket, resp) do
     case :proplists.get_value(:"Content-Length", resp.headers) do
       :undefined ->
         # No content length. Checked if chunked
@@ -176,9 +167,9 @@ defmodule CaddyServer.Req do
     end
   end
 
-  def read_chunked_body(socket, resp), do: read_chunked_body(socket, resp, [])
+  defp read_chunked_body(socket, resp), do: read_chunked_body(socket, resp, [])
 
-  def read_chunked_body(socket, resp, acc) do
+  defp read_chunked_body(socket, resp, acc) do
     Logger.debug("read_chunked_body: #{inspect(socket)} #{inspect(resp)} #{inspect(acc)}")
     :inet.setopts(socket, [{:packet, :line}])
 

@@ -1,6 +1,21 @@
 defmodule CaddyServer.AdminSocket do
   require Logger
 
+  @doc """
+  Return admin socket path of caddy server.
+
+  soeket path is set in config
+  ```
+  config :caddy_server, CaddyServer, control_socket: nil
+  ```
+
+  If confit is not set, use default socket
+  root:
+  `unix//var/run/caddy_admin.sock`
+  user:
+  `unix/${HOME}/.local/run/caddy_admin.sock`
+
+  """
   def socket_path() do
     case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:control_socket) do
       {:ok, socket} when is_binary(socket) ->

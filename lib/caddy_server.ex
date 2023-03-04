@@ -10,20 +10,33 @@ defmodule CaddyServer do
 
   @default_version "2.6.4"
 
+  @doc """
+  Start caddy server by using config return in `caddyfile()`
+  """
+  @spec start :: :ignore | {:error, any} | {:ok, pid}
   def start() do
     GenServer.start(__MODULE__, [], name: __MODULE__)
   end
 
+  @doc """
+  Return GenServer state, %{port: Port.t()}
+  """
+  @spec get_state :: %{port: Port.t() | nil}
   def get_state() do
     GenServer.call(__MODULE__, :get_state)
   end
 
+  @doc """
+  Stop caddy server using system kill command
+  """
+  @spec stop :: non_neg_integer
   def stop() do
     {:os_pid, pid} = CaddyServer.get_state() |> Map.get(:port) |> Port.info(:os_pid)
     {_, code} = System.cmd("kill", ["#{pid}"])
     code
   end
 
+  @spec version :: binary()
   @doc """
   Return Caddy Version from ` Application.get_env(:caddy_server, CaddyServer) |> Keyword.get(:version)`
 
@@ -37,10 +50,16 @@ defmodule CaddyServer do
     end
   end
 
+  @spec caddyfile :: binary()
+  @doc """
+  Return Caddyfile content
+  """
   def caddyfile() do
     """
 
     {
+      #{global_conf()}
+
       admin #{control_socket()} {
         origins caddy-admin.local
       }
@@ -51,20 +70,24 @@ defmodule CaddyServer do
     """
   end
 
-  def global_conf() do
+  defp global_conf() do
     case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:global_conf) do
       {:ok, conf} -> conf
       :error -> ""
     end
   end
 
-  def site_conf() do
+  defp site_conf() do
     case Application.get_env(:caddy_server, CaddyServer) |> Keyword.fetch(:site_conf) do
       {:ok, conf} -> conf
       :error -> ""
     end
   end
 
+  @doc """
+  Return path of caddy server binary
+  """
+  @spec cmd :: binary
   def cmd() do
     path =
       if Downloader.downloaded_bin() |> File.exists?() do
@@ -90,10 +113,6 @@ defmodule CaddyServer do
     else
       raise "No Caddy command found"
     end
-  end
-
-  def control_socket() do
-    AdminSocket.socket_path()
   end
 
   def start_link(_) do
@@ -173,6 +192,10 @@ defmodule CaddyServer do
       _ ->
         0
     end
+  end
+
+  defp control_socket() do
+    AdminSocket.socket_path()
   end
 
   defp priv_dir(p) do
