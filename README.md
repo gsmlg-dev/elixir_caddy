@@ -1,5 +1,10 @@
 # CaddyServer
 
+By set `mix.exs` to install
+```elixir
+{:caddy_server, "~> 0.2"}
+```
+
 ## Start Caddy Server by `Port`
 
 Start in Application supervisor
