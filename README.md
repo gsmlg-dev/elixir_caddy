@@ -2,7 +2,7 @@
 
 By set `mix.exs` to install
 ```elixir
-{:caddy_server, "~> 0.2"}
+{:caddy_server, "~> 0.3"}
 ```
 
 ## Start Caddy Server by `Port`
@@ -35,10 +35,15 @@ Set caddy config:
 
 ```elixir
 config :caddy_server, CaddyServer,
-  version: "2.6.4", # auto download version
+  version: "2.8.4", # auto download version
   auto_download: true, # enable auto download
   control_socket: nil, # caddy server admin's unix socket
   bin_path: nil, # caddy server binary file path
+  global_conf: """
+  http_port 80
+  https_port 443
+  auto_https off
+  """
   # Caddyfile of caddy server
   site_conf: """
   :3955 {

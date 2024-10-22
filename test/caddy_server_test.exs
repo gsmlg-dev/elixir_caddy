@@ -3,7 +3,7 @@ defmodule CaddyServerTest do
   doctest CaddyServer
 
   test "test caddy server version" do
-    assert CaddyServer.version() =~ "2.6.4"
+    assert CaddyServer.version() =~ "2.8.4"
   end
 
   test "test caddy server cmd" do

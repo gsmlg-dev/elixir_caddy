@@ -8,7 +8,7 @@ defmodule CaddyServer do
   require Logger
   use GenServer
 
-  @default_version "2.6.4"
+  @default_version "2.8.4"
 
   @doc """
   Start caddy server by using config return in `caddyfile()`
@@ -130,7 +130,7 @@ defmodule CaddyServer do
     File.mkdir_p(priv_dir("/etc"))
     f = priv_dir("/etc/Caddyfile")
 
-    Logger.info("Write Caddyfile")
+    Logger.info("Write Caddyfile to #{f}")
     Logger.debug("Caddyfile:\n#{caddyfile()}")
     File.write!(f, caddyfile())
 
@@ -159,7 +159,7 @@ defmodule CaddyServer do
   end
 
   def handle_info({port, {:data, msg}}, state) do
-    Logger.info("Caddy#{inspect(port)}: #{msg}")
+    Logger.info("Caddy#{inspect(port)}: #{msg |> String.trim_trailing()}")
     {:noreply, state}
   end
 
@@ -170,16 +170,15 @@ defmodule CaddyServer do
 
   # handle the trapped exit call
   def handle_info({:EXIT, _from, reason}, state) do
-    Logger.info("exiting")
-    cleanup(reason, state)
+    Logger.info("Caddy exiting: #{cleanup(reason, state)}")
     # see GenServer docs for other return types
     {:stop, reason, state}
   end
 
   # handle termination
   def terminate(reason, state) do
-    Logger.info("terminating")
-    cleanup(reason, state)
+    Logger.info("Caddy terminating: #{cleanup(reason, state)}")
+
     state
   end
 
