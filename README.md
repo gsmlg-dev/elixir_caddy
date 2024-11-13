@@ -1,8 +1,8 @@
-# CaddyServer
+# Caddy
 
 By set `mix.exs` to install
 ```elixir
-{:caddy_server, "~> 0.3"}
+{:caddy, "~> 0.3"}
 ```
 
 ## Start Caddy Server by `Port`
@@ -18,8 +18,8 @@ def start(_type, _args) do
       {Phoenix.PubSub, name: PhoenixWeb.PubSub},
       # Start the Endpoint (http/https)
       PhoenixWeb.Endpoint,
-      # Start a CaddyServer by calling: CaddyServer.start_link([])
-      {CaddyServer, []}
+      # Start a Caddy by calling: Caddy.start_link([])
+      {Caddy, []}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -34,7 +34,7 @@ def start(_type, _args) do
 Set caddy config:
 
 ```elixir
-config :caddy_server, CaddyServer,
+config :caddy, Caddy,
   version: "2.8.4", # auto download version
   auto_download: true, # enable auto download
   control_socket: nil, # caddy server admin's unix socket

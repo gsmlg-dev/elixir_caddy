@@ -1,14 +1,14 @@
-defmodule CaddyServer.MixProject do
+defmodule Caddy.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :caddy_server,
-      version: "0.3.0",
+      app: :caddy,
+      version: "1.0.0",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
-      name: "CaddyServer",
-      description: "Start a Caddy HTTP Server",
+      name: "Caddy",
+      description: "Run Caddy HTTP Server in supervisor tree",
       package: package(),
       deps: deps()
     ]
@@ -36,7 +36,7 @@ defmodule CaddyServer.MixProject do
       licenses: ["MIT"],
       files: ~w(lib priv LICENSE mix.exs README.md),
       links: %{
-        Changelog: "https://hexdocs.pm/caddy_server/changelog.html"
+        Changelog: "https://hexdocs.pm/caddy/changelog.html"
       }
     ]
   end
