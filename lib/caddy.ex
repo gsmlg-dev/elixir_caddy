@@ -7,19 +7,29 @@ defmodule Caddy do
 
   use Supervisor
 
+  @spec start() :: :ignore | {:error, any()} | {:ok, pid()}
+  def start() do
+    start_link([])
+  end
+
+  @spec stop(term()) :: :ok
+  def stop(reason \\ :normal) do
+    Supervisor.stop(__MODULE__, reason)
+  end
+
   @spec start_link(any()) :: :ignore | {:error, any()} | {:ok, pid()}
-  def start_link(init_arg) do
-    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+  def start_link(args) do
+    Supervisor.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   @impl true
-  @spec init(any()) :: {:ok, {sup_flags(), [child_spec() | (old_erlang_child_spec :: :supervisor.child_spec())]}}
-  def init(_init_arg) do
+  def init(args) do
     children = [
+      {Caddy.Bootstrap, args},
       Caddy.Server
     ]
 
-    opts = [strategy: :one_for_rest, name: __MODULE__]
+    opts = [strategy: :rest_for_one, name: __MODULE__]
 
     Supervisor.init(children, opts)
   end

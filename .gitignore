@@ -25,9 +25,8 @@ caddyserver-*.tar
 # Temporary files, for example, from tests.
 /tmp/
 
-/priv/*.tar.gz
+/priv
 /priv/etc
 /priv/data
-/priv/debug
 /priv/bin
 

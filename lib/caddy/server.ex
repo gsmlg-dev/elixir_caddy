@@ -15,6 +15,13 @@ defmodule Caddy.Server do
   end
 
   def init(_) do
+    # remove pidfile if exists
+    if Caddy.Bootstrap.get(:pidfile) |> File.exists? do
+      pid = Caddy.Bootstrap.get(:pidfile) |> File.read!() |> String.trim()
+      Logger.info("Caddy Server init: pidfile exists: #{pid}")
+      File.rm(Caddy.Bootstrap.get(:pidfile))
+      System.cmd("kill", ["-9", "#{pid}"])
+    end
     Logger.info("Caddy Server init")
     state = %{port: nil}
     Process.flag(:trap_exit, true)
@@ -23,24 +30,17 @@ defmodule Caddy.Server do
 
   def handle_continue(:start, state) do
     Logger.info("Staring Caddy Server...")
-    cmd = "/usr/bin/caddy"
-    cfg_path = Application.app_dir(:caddy, "priv/etc/init.json")
-    port =
-      Port.open(
-        {:spawn_executable, cmd},
-        [
-          {:args, ["run", "--adapter", "json", "--config", cfg_path]},
-          :stream,
-          :binary,
-          :exit_status,
-          :hide,
-          :use_stdio,
-          :stderr_to_stdout
-        ]
-      )
-
-    state = state |> Map.put(:port, port)
-    {:noreply, state}
+    with bin_path <- Caddy.Bootstrap.get(:bin_path),
+      init_config <- Caddy.Bootstrap.get(:config_path),
+      pidfile <- Caddy.Bootstrap.get(:pidfile),
+      envfile <- Caddy.Bootstrap.get(:envfile),
+      port <- port_start(bin_path, %{file: init_config, pid: pidfile, env: envfile}) do
+        state = state |> Map.put(:port, port)
+        {:noreply, state}
+      else
+        error ->
+          {:stop, error}
+    end
   end
 
   def handle_info({port, {:data, msg}}, state) do
@@ -65,11 +65,10 @@ defmodule Caddy.Server do
   def terminate(reason, state) do
     Logger.info("Caddy.Server terminating")
     cleanup(reason, state)
-    state
   end
 
-  defp cleanup(_reason, state) do
-    case state |> Map.get(:port) |> Port.info(:os_pid) do
+  defp cleanup(reason, %{port: port} = _state) do
+    case port |> Port.info(:os_pid) do
       {:os_pid, pid} ->
         {_, code} = System.cmd("kill", ["-9", "#{pid}"])
         code
@@ -77,5 +76,33 @@ defmodule Caddy.Server do
       _ ->
         0
     end
+    Port.close(port)
+    case reason do
+      :normal -> :normal
+      :shutdown -> :shutdown
+      term -> {:shutdown, term}
+    end
+  end
+
+  defp port_start(bin_path, config) do
+    args = [
+      "run",
+      "--environ",
+      "--envfile", config[:env],
+      "--config", config[:file],
+      "--pidfile", config[:pid]
+    ]
+    Port.open(
+        {:spawn_executable, bin_path},
+        [
+          {:args, args},
+          :stream,
+          :binary,
+          :exit_status,
+          :hide,
+          :use_stdio,
+          :stderr_to_stdout
+        ]
+      )
   end
 end
