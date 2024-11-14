@@ -7,6 +7,7 @@ defmodule Caddy.Bootstrap do
 
   """
   require Logger
+  alias Caddy.Config
 
   use GenServer
 
@@ -18,28 +19,27 @@ defmodule Caddy.Bootstrap do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
-  def init(args) do
+  def init(_args) do
     Logger.info("Caddy Bootstrapping...")
 
-    with bin_path <- Keyword.get(args, :bin_path),
-      bin_path <- if(bin_path == nil, do: System.find_executable("caddy"), else: bin_path),
+    with true <- Config.ensure_path_exists(),
+      :ok <- stop_exists_server(),
+      bin_path <- Config.get(:caddy_bin),
       {version, 0} <- System.cmd(bin_path, ["version"]),
-      envfile <- get_envfile(),
       {modules, 0} <- get_modules(bin_path),
-      {:ok, config_path} <- init_config() do
+      {:ok, envfile} <- init_env_file(),
+      {:ok, config_path} <- init_config_file() do
       state = %{
         version: version,
         bin_path: bin_path,
         config_path: config_path,
         envfile: envfile,
-        pidfile: Application.app_dir(:caddy, "priv/run/caddy.pid"),
-        admin_socket: Application.app_dir(:caddy, "priv/run/caddy.sock"),
+        pidfile: Config.pid_file(),
         modules: modules
       }
       {:ok, state}
     else
       error ->
-        Process.sleep(1000)
         {:stop, error}
     end
   end
@@ -49,56 +49,41 @@ defmodule Caddy.Bootstrap do
     {:reply, value, state}
   end
 
-  def get_init_config() do
-    # {"admin":{"listen":"unix//var/run/caddy.sock","origins":["caddy-admin.local"]}}
-    admin_socket_path = Application.app_dir(:caddy, "priv/run/caddy.sock")
-    if admin_socket_path |> Path.dirname() |> File.exists?() |> Kernel.! do
-      admin_socket_path |> Path.dirname() |> File.mkdir_p()
+  def stop_exists_server() do
+    pidfile = Config.pid_file()
+    if pidfile |> File.exists? do
+      pid = pidfile |> File.read!() |> String.trim()
+      Logger.info("Caddy Bootstrap pidfile exists: #{pid}")
+      File.rm(pidfile)
+      System.cmd("kill", ["-9", "#{pid}"])
+      :ok
+    else
+      :ok
     end
-
-    storage_path = Application.app_dir(:caddy, "priv/storage")
-    if storage_path |> File.exists?() |> Kernel.! do
-      storage_path |> File.mkdir_p()
-    end
-
-    %{
-      admin: %{
-        listen: "unix/" <> admin_socket_path,
-        origins: ["caddy-admin.local"]
-      },
-      storage: %{
-        module: "file_system",
-        root: storage_path
-      }
-    }
   end
 
-  defp init_config() do
-    with path <- Application.app_dir(:caddy, "priv/etc/init.json"),
-      :ok <- Path.dirname(path) |> File.mkdir_p(),
-      {:ok, cfg} <- Jason.encode(get_init_config()),
-      :ok <- File.write(path, cfg) do
-      {:ok, path}
+  defp init_config_file() do
+    with initial <- Config.initial(),
+      saved <- Config.saved(),
+      config <- Map.merge(initial, saved),
+      {:ok, cfg} <- Jason.encode(config),
+      :ok <- File.write(Config.init_file(), cfg) do
+      {:ok, Config.init_file()}
     else
       error ->
-        Logger.error("Read init.json error: #{inspect(error)}")
+        Logger.error("[init_config_file] error: #{inspect(error)}")
         {:error, error}
     end
   end
 
-  defp get_envfile() do
-    envfile = Application.app_dir(:caddy, "priv/etc/envfile")
-    if envfile |> Path.dirname() |> File.exists?() |> Kernel.! do
-      envfile |> Path.dirname() |> File.mkdir_p()
+  defp init_env_file() do
+    envfile = Caddy.Config.env_file()
+    case File.write(envfile, Caddy.Config.env()) do
+      :ok ->
+        {:ok, envfile}
+      {:error, posix} ->
+        {:error, posix}
     end
-    home = Application.app_dir(:caddy, "priv")
-    env = """
-    HOME="#{home}"
-    XDG_CONFIG_HOME="#{home}/config"
-    XDG_DATA_HOME="#{home}/data"
-    """
-    File.write!(envfile, env)
-    envfile
   end
 
   defp get_modules(bin_path) do

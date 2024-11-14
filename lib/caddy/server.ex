@@ -7,6 +7,7 @@ defmodule Caddy.Server do
 
   """
   require Logger
+  alias Caddy.Config
 
   use GenServer
 
@@ -15,13 +16,6 @@ defmodule Caddy.Server do
   end
 
   def init(_) do
-    # remove pidfile if exists
-    if Caddy.Bootstrap.get(:pidfile) |> File.exists? do
-      pid = Caddy.Bootstrap.get(:pidfile) |> File.read!() |> String.trim()
-      Logger.info("Caddy Server init: pidfile exists: #{pid}")
-      File.rm(Caddy.Bootstrap.get(:pidfile))
-      System.cmd("kill", ["-9", "#{pid}"])
-    end
     Logger.info("Caddy Server init")
     state = %{port: nil}
     Process.flag(:trap_exit, true)
@@ -31,10 +25,7 @@ defmodule Caddy.Server do
   def handle_continue(:start, state) do
     Logger.info("Staring Caddy Server...")
     with bin_path <- Caddy.Bootstrap.get(:bin_path),
-      init_config <- Caddy.Bootstrap.get(:config_path),
-      pidfile <- Caddy.Bootstrap.get(:pidfile),
-      envfile <- Caddy.Bootstrap.get(:envfile),
-      port <- port_start(bin_path, %{file: init_config, pid: pidfile, env: envfile}) do
+      port <- port_start(bin_path) do
         state = state |> Map.put(:port, port)
         {:noreply, state}
       else
@@ -43,8 +34,8 @@ defmodule Caddy.Server do
     end
   end
 
-  def handle_info({port, {:data, msg}}, state) do
-    Logger.info("Caddy#{inspect(port)}: #{msg |> String.trim_trailing()}")
+  def handle_info({_port, {:data, msg}}, state) do
+    Caddy.Logger.Buffer.write(msg)
     {:noreply, state}
   end
 
@@ -77,6 +68,10 @@ defmodule Caddy.Server do
         0
     end
     Port.close(port)
+    pidfile = Config.pid_file()
+    if pidfile |> File.exists? do
+      File.rm(pidfile)
+    end
     case reason do
       :normal -> :normal
       :shutdown -> :shutdown
@@ -84,13 +79,13 @@ defmodule Caddy.Server do
     end
   end
 
-  defp port_start(bin_path, config) do
+  defp port_start(bin_path) do
     args = [
       "run",
       "--environ",
-      "--envfile", config[:env],
-      "--config", config[:file],
-      "--pidfile", config[:pid]
+      "--envfile", Config.env_file(),
+      "--config", Config.init_file(),
+      "--pidfile", Config.pid_file()
     ]
     Port.open(
         {:spawn_executable, bin_path},
