@@ -27,7 +27,8 @@ defmodule Caddy.Config do
     paths()
     |> Enum.filter(&!File.exists?(&1))
     |> Enum.each(&File.mkdir_p/1)
-    paths() |> Enum.filter(&!File.exists?(&1)) |> Kernel.==(paths())
+
+    paths() |> Enum.filter(&File.exists?(&1)) |> Kernel.==(paths())
   end
 
   def get(name) do
@@ -45,8 +46,10 @@ defmodule Caddy.Config do
 
   def init(args) do
     caddy_bin = Keyword.get(args, :caddy_bin)
+    passed_config = Keyword.get(args, :config, %{})
+    config = initial() |> Map.merge(saved()) |> Map.merge(passed_config)
 
-    {:ok, %{config: %{}, caddy_bin: caddy_bin}}
+    {:ok, %{config: config, caddy_bin: caddy_bin}}
   end
 
   def handle_call({:get, key}, _from, state) do

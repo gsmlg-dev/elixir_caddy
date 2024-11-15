@@ -28,18 +28,21 @@ defmodule Caddy.Bootstrap do
       {version, 0} <- System.cmd(bin_path, ["version"]),
       {modules, 0} <- get_modules(bin_path),
       {:ok, envfile} <- init_env_file(),
+      {env, 0} <- get_env(bin_path),
       {:ok, config_path} <- init_config_file() do
       state = %{
         version: version,
         bin_path: bin_path,
         config_path: config_path,
         envfile: envfile,
+        env: env,
         pidfile: Config.pid_file(),
         modules: modules
       }
       {:ok, state}
     else
       error ->
+        Logger.error("Caddy Bootstrap [init] error: #{inspect(error)}")
         {:stop, error}
     end
   end
@@ -63,9 +66,7 @@ defmodule Caddy.Bootstrap do
   end
 
   defp init_config_file() do
-    with initial <- Config.initial(),
-      saved <- Config.saved(),
-      config <- Map.merge(initial, saved),
+    with config <- Config.get(:config),
       {:ok, cfg} <- Jason.encode(config),
       :ok <- File.write(Config.init_file(), cfg) do
       {:ok, Config.init_file()}
@@ -91,6 +92,15 @@ defmodule Caddy.Bootstrap do
       {ms, 0} ->
         modules = ms |> String.split("\n") |> Enum.filter(fn(l) -> String.match?(l, ~r/^\S+/) end)
         {modules, 0}
+      {output, code} ->
+        {output, code}
+    end
+  end
+
+  defp get_env(bin_path) do
+    case System.cmd(bin_path, ["environ", "--envfile", Config.env_file()]) do
+      {env, 0} ->
+        {env, 0}
       {output, code} ->
         {output, code}
     end

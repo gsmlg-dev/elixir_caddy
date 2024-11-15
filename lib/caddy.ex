@@ -9,7 +9,8 @@ defmodule Caddy do
 
   @spec start() :: :ignore | {:error, any()} | {:ok, pid()}
   def start() do
-    start_link([])
+    caddy_bin = System.find_executable("caddy")
+    start_link(caddy_bin: caddy_bin)
   end
 
   @spec stop(term()) :: :ok

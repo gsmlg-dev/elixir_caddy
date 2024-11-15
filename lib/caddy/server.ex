@@ -55,6 +55,7 @@ defmodule Caddy.Server do
   # handle termination
   def terminate(reason, state) do
     Logger.info("Caddy.Server terminating")
+    # send(port, {self(), :close})
     cleanup(reason, state)
   end
 
@@ -67,7 +68,6 @@ defmodule Caddy.Server do
       _ ->
         0
     end
-    Port.close(port)
     pidfile = Config.pid_file()
     if pidfile |> File.exists? do
       File.rm(pidfile)
@@ -82,7 +82,6 @@ defmodule Caddy.Server do
   defp port_start(bin_path) do
     args = [
       "run",
-      "--environ",
       "--envfile", Config.env_file(),
       "--config", Config.init_file(),
       "--pidfile", Config.pid_file()
