@@ -23,7 +23,7 @@ defmodule Caddy.Bootstrap do
   end
 
   def init(_args) do
-    Logger.info("Caddy Bootstrapping...")
+    Logger.info("Caddy Bootstrap init")
 
     with true <- Config.ensure_path_exists(),
       :ok <- stop_exists_server(),

@@ -1,5 +1,6 @@
 defmodule Caddy.Logger.Buffer do
   use GenServer
+  require Logger
 
   def write(buf) do
     GenServer.cast(__MODULE__, {:write, buf})
