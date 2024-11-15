@@ -15,6 +15,9 @@ defmodule Caddy.Bootstrap do
     GenServer.call(__MODULE__, {:get, key})
   end
 
+  def restart() do
+    GenServer.stop(__MODULE__)
+  end
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
