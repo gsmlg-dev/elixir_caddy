@@ -1,16 +1,16 @@
 defmodule Caddy.Logger.Buffer do
   use GenServer
 
-  def start_link(_) do
-    GenServer.start_link(__MODULE__, "", name: __MODULE__)
-  end
-
-
   def write(buf) do
     GenServer.cast(__MODULE__, {:write, buf})
   end
 
+  def start_link(_) do
+    GenServer.start_link(__MODULE__, "", name: __MODULE__)
+  end
+
   def init(args) do
+    Logger.info("Caddy Logger Buffer init")
     {:ok, args}
   end
 

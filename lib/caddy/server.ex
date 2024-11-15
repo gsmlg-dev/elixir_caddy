@@ -23,7 +23,7 @@ defmodule Caddy.Server do
   end
 
   def handle_continue(:start, state) do
-    Logger.info("Staring Caddy Server...")
+    Logger.info("Caddy Server Starting")
     with bin_path <- Caddy.Bootstrap.get(:bin_path),
       port <- port_start(bin_path) do
         state = state |> Map.put(:port, port)

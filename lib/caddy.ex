@@ -34,7 +34,8 @@ defmodule Caddy do
       Caddy.Bootstrap,
       Caddy.Logger.Buffer,
       Caddy.Logger.Store,
-      Caddy.Server
+      Caddy.Server,
+      Caddy.Admin
     ]
 
     opts = [strategy: :rest_for_one, name: __MODULE__]

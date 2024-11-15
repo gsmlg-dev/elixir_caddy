@@ -23,7 +23,7 @@ defmodule Caddy.Logger.Store do
   end
 
   def init(args) do
-    Logger.info("Caddy Logger Store init.")
+    Logger.info("Caddy Logger Store init")
 
     {:ok, args}
   end

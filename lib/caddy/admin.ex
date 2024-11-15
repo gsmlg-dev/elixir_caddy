@@ -27,7 +27,7 @@ defmodule Caddy.Admin do
   end
 
   defp check_caddy_server() do
-    Caddy.Admin.Api.get_config("admin")
+    %{"listen" => "unix/" <> _ } = Caddy.Admin.Api.get_config("admin")
   rescue
     _ ->
       Caddy.Bootstrap.restart()
