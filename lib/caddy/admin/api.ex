@@ -22,6 +22,7 @@ defmodule Caddy.Admin.Api do
   ```
 
   """
+  require Logger
 
   alias Caddy.Admin.Request
 
@@ -45,7 +46,7 @@ defmodule Caddy.Admin.Api do
   end
 
   def load(conf) when is_binary(conf) do
-    {:ok, resp, body} = Request.patch("/load", conf)
+    {:ok, resp, body} = Request.post("/load", conf)
     resp |> Map.put(:body, body)
   end
 
@@ -62,13 +63,72 @@ defmodule Caddy.Admin.Api do
   """
   def get_config(path) when is_binary(path) do
     {:ok, _resp, body} = Request.get("/config/#{path}")
-    # resp |> Map.put(:body, body)
+    body
+  end
+  def get_config() do
+    {:ok, _resp, body} = Request.get("/config/")
     body
   end
 
-  def get_config() do
-    {:ok, _resp, body} = Request.get("/config/")
-    # resp = resp |> Map.put(:body, body)
+  @doc """
+  Post the config at the named path
+  """
+  def post_config(path, data) when is_binary(path) do
+    data_string = Jason.encode!(data)
+    {:ok, resp, body} = Request.post("/config/#{path}", data_string)
+    Logger.debug(inspect(resp))
+    body
+  end
+  def post_config(data) do
+    data_string = Jason.encode!(data)
+    {:ok, resp, body} = Request.post("/config/", data_string)
+    Logger.debug(inspect(resp))
+    body
+  end
+
+  @doc """
+  Put the config at the named path
+  """
+  def put_config(path, data) when is_binary(path) do
+    data_string = Jason.encode!(data)
+    {:ok, resp, body} = Request.put("/config/#{path}", data_string)
+    Logger.debug(inspect(resp))
+    body
+  end
+  def put_config(data) do
+    data_string = Jason.encode!(data)
+    {:ok, resp, body} = Request.put("/config/", data_string)
+    Logger.debug(inspect(resp))
+    body
+  end
+
+  @doc """
+  Patch the config at the named path
+  """
+  def patch_config(path, data) when is_binary(path) do
+    data_string = Jason.encode!(data)
+    {:ok, resp, body} = Request.patch("/config/#{path}", data_string)
+    Logger.debug(inspect(resp))
+    body
+  end
+  def patch_config(data) do
+    data_string = Jason.encode!(data)
+    {:ok, resp, body} = Request.patch("/config/", data_string)
+    Logger.debug(inspect(resp))
+    body
+  end
+
+  @doc """
+  Delete the config at the named path
+  """
+  def delete_config(path) when is_binary(path) do
+    {:ok, resp, body} = Request.delete("/config/#{path}")
+    Logger.debug(inspect(resp))
+    body
+  end
+  def delete_config() do
+    {:ok, resp, body} = Request.delete("/config/")
+    Logger.debug(inspect(resp))
     body
   end
 
@@ -77,7 +137,8 @@ defmodule Caddy.Admin.Api do
   """
   @spec adapt(binary) :: Map.t()
   def adapt(conf) do
-    {:ok, _resp, json_conf} = Request.post("/adapt", conf)
+    {:ok, resp, json_conf} = Request.post("/adapt", conf)
+    Logger.debug(inspect(resp))
     json_conf
   end
 end

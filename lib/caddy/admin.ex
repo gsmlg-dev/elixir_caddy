@@ -10,19 +10,21 @@ defmodule Caddy.Admin do
 
   use GenServer
 
+  @check_interval 15_000
+
   def start_link(_) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def init(_) do
     Logger.info("Caddy Admin init")
-    Process.send_after(self(), :check_server, 30_000)
+    Process.send_after(self(), :check_server,  @check_interval)
     {:ok, %{}}
   end
 
   def handle_info(:check_server, state) do
     check_caddy_server()
-    Process.send_after(self(), :check_server, 30_000)
+    Process.send_after(self(), :check_server,  @check_interval)
     {:noreply, state}
   end
 
