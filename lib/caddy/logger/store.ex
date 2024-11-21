@@ -29,7 +29,7 @@ defmodule Caddy.Logger.Store do
   end
 
   def handle_cast({:write, log}, state) do
-    {:noreply, [log | state]}
+    {:noreply, [log | state] |> Enum.take(50_000)}
   end
 
   def handle_call({:tail, n}, _from, state) do
