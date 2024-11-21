@@ -6,6 +6,8 @@ defmodule Caddy.Config do
   Start Caddy Config
 
   """
+  require Logger
+
   use GenServer
 
   def home_path(), do: Application.app_dir(:caddy, "priv")

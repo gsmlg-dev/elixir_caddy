@@ -2,7 +2,7 @@
 
 By set `mix.exs` to install
 ```elixir
-{:caddy, "~> 0.3"}
+{:caddy, "~> 1.0"}
 ```
 
 ## Start Caddy Server by `Port`
