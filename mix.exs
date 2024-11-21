@@ -9,6 +9,7 @@ defmodule Caddy.MixProject do
       start_permanent: Mix.env() == :prod,
       name: "Caddy",
       description: "Run Caddy HTTP Server in supervisor tree",
+      aliases: aliases(),
       package: package(),
       deps: deps()
     ]
@@ -38,6 +39,25 @@ defmodule Caddy.MixProject do
       links: %{
         Changelog: "https://hexdocs.pm/caddy/changelog.html"
       }
+    ]
+  end
+
+  # Aliases are shortcuts or tasks specific to the current project.
+  # For example, publish this package, run:
+  #
+  #     $ mix publish
+  #
+  defp aliases do
+    [
+      setup: ["deps.get", "assets.setup"],
+      publish: [
+        "format",
+        fn _ ->
+          File.rm_rf!("priv")
+          File.mkdir!("priv")
+        end,
+        "hex.publish"
+      ]
     ]
   end
 end
