@@ -116,7 +116,8 @@ defmodule Caddy.Config do
     """
   end
 
-  defp parse_caddyfile(caddy_bin, caddy_file) do
+  @spec parse_caddyfile(binary(), Path.t()) :: Map.t()
+  def parse_caddyfile(caddy_bin, caddy_file) do
     with {config_json, 0} <-
            System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", caddy_file]),
          {:ok, config} <- Jason.decode(config_json) do

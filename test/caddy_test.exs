@@ -2,6 +2,13 @@ defmodule CaddyTest do
   use ExUnit.Case
   doctest Caddy
 
+  setup_all do
+    Caddy.start()
+    on_exit(fn ->
+      # Caddy.stop()
+    end)
+  end
+
   test "test caddy server version" do
     assert Caddy.Bootstrap.get(:version) =~ "2.8.4"
   end

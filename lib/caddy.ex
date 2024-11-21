@@ -18,10 +18,7 @@ defmodule Caddy do
     Supervisor.stop(__MODULE__, reason)
   end
 
-  def saved_config() do
-  end
-
-  @spec start_link(any()) :: :ignore | {:error, any()} | {:ok, pid()}
+  @spec start_link(Keyword.t()) :: :ignore | {:error, any()} | {:ok, pid()}
   def start_link(args) do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
   end
