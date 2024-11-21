@@ -57,7 +57,7 @@ defmodule Caddy.Server do
   def terminate(reason, state) do
     Logger.info("Caddy.Server terminating")
     cleanup(reason, state)
-    Caddy.Logger.Store.tail() |> Enum.each(&(IO.puts("    " <> &1)))
+    Caddy.Logger.Store.tail() |> Enum.each(&IO.puts("    " <> &1))
   end
 
   defp cleanup(reason, %{port: port} = _state) do
