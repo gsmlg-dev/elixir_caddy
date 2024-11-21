@@ -65,6 +65,7 @@ defmodule Caddy.Admin.Api do
     {:ok, _resp, body} = Request.get("/config/#{path}")
     body
   end
+
   def get_config() do
     {:ok, _resp, body} = Request.get("/config/")
     body
@@ -79,6 +80,7 @@ defmodule Caddy.Admin.Api do
     Logger.debug(inspect(resp))
     body
   end
+
   def post_config(data) do
     data_string = Jason.encode!(data)
     {:ok, resp, body} = Request.post("/config/", data_string)
@@ -95,6 +97,7 @@ defmodule Caddy.Admin.Api do
     Logger.debug(inspect(resp))
     body
   end
+
   def put_config(data) do
     data_string = Jason.encode!(data)
     {:ok, resp, body} = Request.put("/config/", data_string)
@@ -111,6 +114,7 @@ defmodule Caddy.Admin.Api do
     Logger.debug(inspect(resp))
     body
   end
+
   def patch_config(data) do
     data_string = Jason.encode!(data)
     {:ok, resp, body} = Request.patch("/config/", data_string)
@@ -126,6 +130,7 @@ defmodule Caddy.Admin.Api do
     Logger.debug(inspect(resp))
     body
   end
+
   def delete_config() do
     {:ok, resp, body} = Request.delete("/config/")
     Logger.debug(inspect(resp))

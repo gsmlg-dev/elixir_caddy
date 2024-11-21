@@ -23,9 +23,10 @@ defmodule Caddy.Config do
   def saved_json_file(), do: home_path() <> "/config/caddy/autosave.json"
 
   def paths(), do: [home_path(), etc_path(), storage_path(), run_path(), tmp_path()]
+
   def ensure_path_exists() do
     paths()
-    |> Enum.filter(&!File.exists?(&1))
+    |> Enum.filter(&(!File.exists?(&1)))
     |> Enum.each(&File.mkdir_p/1)
 
     paths() |> Enum.filter(&File.exists?(&1)) |> Kernel.==(paths())
@@ -46,7 +47,15 @@ defmodule Caddy.Config do
 
   def init(args) do
     caddy_bin = Keyword.get(args, :caddy_bin)
-    passed_config = Keyword.get(args, :config, %{})
+    caddy_file = Keyword.get(args, :caddy_file)
+
+    passed_config =
+      if caddy_file == nil do
+        Keyword.get(args, :config, %{})
+      else
+        parse_caddyfile(caddy_bin, caddy_file)
+      end
+
     config = initial() |> Map.merge(saved()) |> Map.merge(passed_config)
 
     {:ok, %{config: config, caddy_bin: caddy_bin}}
@@ -59,26 +68,27 @@ defmodule Caddy.Config do
 
   def handle_call({:adapt, {binary, adapter}}, _from, %{caddy_bin: caddy_bin} = state) do
     with tmp_config <- tmp_path() <> "/" <> adapter,
-      :ok <- File.write(tmp_config, binary),
-      {config_json, 0} <- System.cmd(caddy_bin, ["adapt", "--adapter", adapter, "--config", tmp_config]),
-      {:ok, config} <- Jason.decode(config_json) do
-        {:reply, {:ok, config}, state}
-      else
-        error ->
-          {:reply, {:error, error}, state}
+         :ok <- File.write(tmp_config, binary),
+         {config_json, 0} <-
+           System.cmd(caddy_bin, ["adapt", "--adapter", adapter, "--config", tmp_config]),
+         {:ok, config} <- Jason.decode(config_json) do
+      {:reply, {:ok, config}, state}
+    else
+      error ->
+        {:reply, {:error, error}, state}
     end
   end
 
   def saved() do
     with file <- saved_json_file(),
-      true <- File.exists?(file),
-      {:ok, saved_config_string} <- File.read(file),
-      {:ok, saved_config} <- Jason.decode(saved_config_string) do
-        saved_config
-      else
-        _ ->
-          %{}
-      end
+         true <- File.exists?(file),
+         {:ok, saved_config_string} <- File.read(file),
+         {:ok, saved_config} <- Jason.decode(saved_config_string) do
+      saved_config
+    else
+      _ ->
+        %{}
+    end
   end
 
   def initial() do
@@ -104,4 +114,15 @@ defmodule Caddy.Config do
     """
   end
 
+  defp parse_caddyfile(caddy_bin, caddy_file) do
+    with {config_json, 0} <-
+           System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", caddy_file]),
+         {:ok, config} <- Jason.decode(config_json) do
+      config
+    else
+      error ->
+        Logger.error("Error parsing caddyfile: #{inspect(error)}")
+        %{}
+    end
+  end
 end

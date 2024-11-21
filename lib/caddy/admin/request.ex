@@ -121,6 +121,7 @@ defmodule Caddy.Admin.Request do
 
   defp gen_raw_header(method, path, content_type \\ nil) do
     host = Config.get(:config) |> get_in(["admin", "origins"]) |> Enum.at(0, "caddy-admin.local")
+
     """
     #{String.upcase(method)} #{path} HTTP/1.1
     Host: #{host}
@@ -135,7 +136,10 @@ defmodule Caddy.Admin.Request do
   end
 
   defp do_recv(socket, {:ok, {:http_header, _, h, _, v}}, resp) do
-    do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{resp | headers: [{h, v} | resp.headers]})
+    do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{
+      resp
+      | headers: [{h, v} | resp.headers]
+    })
   end
 
   defp do_recv(socket, {:ok, :http_eoh}, resp) do

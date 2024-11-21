@@ -18,21 +18,20 @@ defmodule Caddy.Admin do
 
   def init(_) do
     Logger.info("Caddy Admin init")
-    Process.send_after(self(), :check_server,  @check_interval)
+    Process.send_after(self(), :check_server, @check_interval)
     {:ok, %{}}
   end
 
   def handle_info(:check_server, state) do
     check_caddy_server()
-    Process.send_after(self(), :check_server,  @check_interval)
+    Process.send_after(self(), :check_server, @check_interval)
     {:noreply, state}
   end
 
   defp check_caddy_server() do
-    %{"listen" => "unix/" <> _ } = Caddy.Admin.Api.get_config("admin")
+    %{"listen" => "unix/" <> _} = Caddy.Admin.Api.get_config("admin")
   rescue
     _ ->
       Caddy.Bootstrap.restart()
   end
-
 end

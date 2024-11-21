@@ -19,7 +19,6 @@ defmodule Caddy do
   end
 
   def saved_config() do
-
   end
 
   @spec start_link(any()) :: :ignore | {:error, any()} | {:ok, pid()}
@@ -42,5 +41,4 @@ defmodule Caddy do
 
     Supervisor.init(children, opts)
   end
-
 end
