@@ -19,7 +19,12 @@ def start(_type, _args) do
       # Start the Endpoint (http/https)
       PhoenixWeb.Endpoint,
       # Start a Caddy by calling: Caddy.start_link([])
-      {Caddy, []}
+      {Caddy, [
+        caddy_bin: "<path to caddy binary>",
+        caddy_file: "<path to caddyfile config>", # caddyfile to load, if not set use config instead
+        config: %{}, # Map.t() parsed json config,
+        merge_saved: false, # Merge saved config, defaults to false
+      ]}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -28,47 +33,3 @@ def start(_type, _args) do
     Supervisor.start_link(children, opts)
   end
 ```
-
-## Config Caddy Server
-
-Set caddy config:
-
-```elixir
-config :caddy, Caddy,
-  version: "2.8.4", # auto download version
-  auto_download: true, # enable auto download
-  control_socket: nil, # caddy server admin's unix socket
-  bin_path: nil, # caddy server binary file path
-  global_conf: """
-  http_port 80
-  https_port 443
-  auto_https off
-  """
-  # Caddyfile of caddy server
-  site_conf: """
-  :3955 {
-    log {
-      output stdout
-      format json
-    }
-
-    header {
-      X-Frame-Options SAMEORIGIN
-      X-Content-Type-Options nosniff
-      X-XSS-Protection "1; mode=block"
-      X-Server "elixir_caddy"
-    }
-
-    route {
-      reverse_proxy /api/* {
-        to https://api.github.com:443
-        header_up Host api.github.com
-      }
-
-      reverse_proxy unix//tmp/app.sock
-    }
-  }
-  """
-
-```
-

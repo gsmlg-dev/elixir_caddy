@@ -50,15 +50,34 @@ defmodule Caddy.Config do
   def init(args) do
     caddy_bin = Keyword.get(args, :caddy_bin)
     caddy_file = Keyword.get(args, :caddy_file)
+    merge_saved = Keyword.get(args, :merge_saved, false)
 
-    passed_config =
+    config =
       if caddy_file == nil do
-        Keyword.get(args, :config, %{})
-      else
-        parse_caddyfile(caddy_bin, caddy_file)
-      end
+        passed_config = Keyword.get(args, :config, %{})
+        config = initial()
 
-    config = initial() |> Map.merge(saved()) |> Map.merge(passed_config)
+        config =
+          if merge_saved do
+            config |> Map.merge(saved())
+          else
+            config
+          end
+
+        config |> Map.merge(passed_config)
+      else
+        passed_config = parse_caddyfile(caddy_bin, caddy_file)
+        config = initial()
+
+        config =
+          if merge_saved do
+            config |> Map.merge(saved())
+          else
+            config
+          end
+
+        config |> Map.merge(passed_config)
+      end
 
     {:ok, %{config: config, caddy_bin: caddy_bin}}
   end

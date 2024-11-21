@@ -4,7 +4,9 @@ defmodule CaddyTest do
 
   setup_all do
     Caddy.start()
+
     on_exit(fn ->
+      nil
       # Caddy.stop()
     end)
   end
