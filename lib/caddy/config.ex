@@ -10,21 +10,24 @@ defmodule Caddy.Config do
 
   use GenServer
 
-  def home_path(), do: Application.app_dir(:caddy, "priv")
-  def etc_path(), do: home_path() <> "/etc"
-  def storage_path(), do: home_path() <> "/storage"
-  def run_path(), do: home_path() <> "/run"
-  def tmp_path(), do: home_path() <> "/tmp"
-  def xdg_config_home(), do: home_path() <> "/config"
-  def xdg_data_home(), do: home_path() <> "/data"
+  defdelegate user_home, to: System
+  def user_share(), do: Path.join(user_home(), ".local/share")
 
-  def env_file(), do: etc_path() <> "/envfile"
-  def init_file(), do: etc_path() <> "/init.json"
-  def pid_file(), do: run_path() <> "/caddy.pid"
-  def socket_file(), do: run_path() <> "/caddy.sock"
-  def saved_json_file(), do: home_path() <> "/config/caddy/autosave.json"
+  def priv_path(), do: Application.app_dir(:caddy, "priv")
+  def share_path(), do: Path.join(user_share(), "caddy")
+  def etc_path(), do: Path.join(share_path(), "etc")
+  def run_path(), do: Path.join(share_path(), "run")
+  def tmp_path(), do: Path.join(share_path(), "tmp")
+  def xdg_config_home(), do: Path.join(share_path(), "config")
+  def xdg_data_home(), do: Path.join(share_path(), "data")
 
-  def paths(), do: [home_path(), etc_path(), storage_path(), run_path(), tmp_path()]
+  def env_file(), do: Path.join(etc_path(), "envfile")
+  def init_file(), do: Path.join(etc_path(), "init.json")
+  def pid_file(), do: Path.join(run_path(), "caddy.pid")
+  def socket_file(), do: Path.join(run_path(), "caddy.sock")
+  def saved_json_file(), do: Path.join(xdg_config_home(), "caddy/autosave.json")
+
+  def paths(), do: [priv_path(), share_path(), etc_path(), run_path(), tmp_path()]
 
   def ensure_path_exists() do
     paths()
@@ -119,17 +122,13 @@ defmodule Caddy.Config do
       "admin" => %{
         "listen" => admin_socket_path,
         "origins" => ["caddy-admin.local"]
-      },
-      "storage" => %{
-        "module" => "file_system",
-        "root" => storage_path()
       }
     }
   end
 
   def env() do
     """
-    HOME="#{home_path()}"
+    HOME="#{share_path()}"
     XDG_CONFIG_HOME="#{xdg_config_home()}"
     XDG_DATA_HOME="#{xdg_data_home()}"
     """
@@ -145,6 +144,29 @@ defmodule Caddy.Config do
       error ->
         Logger.error("Error parsing caddyfile: #{inspect(error)}")
         %{}
+    end
+  end
+
+  def first_writable_or(paths, default) do
+    paths
+    |> Enum.find(default, &has_write_permission?/1)
+  end
+
+  def first_writable(paths) do
+    paths
+    |> Enum.find(&has_write_permission?/1)
+  end
+
+  def has_write_permission?(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{access: :write} = _stat} ->
+        true
+
+      {:ok, %File.Stat{access: :read_write} = _stat} ->
+        true
+
+      _ ->
+        false
     end
   end
 end

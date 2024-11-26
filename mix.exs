@@ -4,7 +4,7 @@ defmodule Caddy.MixProject do
   def project do
     [
       app: :caddy,
-      version: "1.0.2",
+      version: "1.0.3",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       name: "Caddy",
