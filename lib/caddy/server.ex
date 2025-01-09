@@ -29,9 +29,6 @@ defmodule Caddy.Server do
          port <- port_start(bin_path) do
       state = state |> Map.put(:port, port)
       {:noreply, state}
-    else
-      error ->
-        {:stop, error}
     end
   end
 
