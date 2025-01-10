@@ -37,7 +37,7 @@ defmodule Caddy.Admin.Api do
   @doc """
   Sets or replaces the active configuration
   """
-  @spec load(Map.t() | String.t()) :: Caddy.Admin.Request.t()
+  @spec load(map() | String.t()) :: Caddy.Admin.Request.t()
   def load(conf) when is_map(conf) do
     get_config()
     |> Map.merge(conf)
@@ -140,7 +140,7 @@ defmodule Caddy.Admin.Api do
   @doc """
   Adapts a configuration to JSON without running it
   """
-  @spec adapt(binary) :: Map.t()
+  @spec adapt(binary) :: map()
   def adapt(conf) do
     {:ok, resp, json_conf} = Request.post("/adapt", conf)
     Logger.debug(inspect(resp))

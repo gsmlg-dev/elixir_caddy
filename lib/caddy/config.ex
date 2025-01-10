@@ -41,7 +41,7 @@ defmodule Caddy.Config do
     GenServer.call(__MODULE__, {:get, name})
   end
 
-  @spec adapt(binary(), binary()) :: {:ok, Map.t()} | {:error, any()}
+  @spec adapt(binary(), binary()) :: {:ok, map()} | {:error, any()}
   def adapt(binary, adapter \\ "caddyfile") do
     GenServer.call(__MODULE__, {:adapt, {binary, adapter}})
   end
@@ -134,7 +134,7 @@ defmodule Caddy.Config do
     """
   end
 
-  @spec parse_caddyfile(binary(), Path.t()) :: Map.t()
+  @spec parse_caddyfile(binary(), Path.t()) :: map()
   def parse_caddyfile(caddy_bin, caddy_file) do
     with {config_json, 0} <-
            System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", caddy_file]),

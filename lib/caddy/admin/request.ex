@@ -73,7 +73,7 @@ defmodule Caddy.Admin.Request do
   Send HTTP PUT method to admin socket
   """
   @spec put(binary(), binary(), binary()) ::
-          {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | Map.t()}
+          {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def put(path, data, content_type \\ "application/json") do
     unix_path = get_admin_sock()
 
@@ -95,7 +95,7 @@ defmodule Caddy.Admin.Request do
   Send HTTP DELETE method to admin socket
   """
   @spec delete(binary(), binary(), binary()) ::
-          {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | Map.t()}
+          {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def delete(path, data \\ "", content_type \\ "application/json") do
     unix_path = get_admin_sock()
 

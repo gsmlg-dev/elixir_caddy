@@ -22,7 +22,7 @@ def start(_type, _args) do
       {Caddy, [
         caddy_bin: "<path to caddy binary>",
         caddy_file: "<path to caddyfile config>", # caddyfile to load, if not set use config instead
-        config: %{}, # Map.t() parsed json config,
+        config: %{}, # map() parsed json config,
         merge_saved: false, # Merge saved config, defaults to false
       ]}
     ]
