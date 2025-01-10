@@ -9,6 +9,12 @@ defmodule Caddy.Admin.Request do
   alias Caddy.Config
   require Logger
 
+  @type t :: %__MODULE__{
+    status: integer(),
+    headers: Keyword.t(),
+    body: binary(),
+  }
+
   defstruct status: 0, headers: [], body: ""
 
   @doc """

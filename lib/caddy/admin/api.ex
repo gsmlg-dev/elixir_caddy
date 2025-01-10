@@ -37,7 +37,9 @@ defmodule Caddy.Admin.Api do
   @doc """
   Sets or replaces the active configuration
   """
-  @spec load(map() | String.t()) :: Caddy.Admin.Request.t()
+  @spec load(map() | binary()) :: Caddy.Admin.Request.t()
+  def load(conf)
+
   def load(conf) when is_map(conf) do
     get_config()
     |> Map.merge(conf)
