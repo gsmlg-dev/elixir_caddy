@@ -24,7 +24,7 @@ defmodule Caddy.Bootstrap do
   end
 
   def init(_args) do
-    Logger.info("Caddy Bootstrap init")
+    Logger.debug("Caddy Bootstrap init")
 
     with true <- Config.ensure_path_exists(),
          :ok <- stop_exists_server(),
@@ -62,7 +62,7 @@ defmodule Caddy.Bootstrap do
 
     if pidfile |> File.exists?() do
       pid = pidfile |> File.read!() |> String.trim()
-      Logger.info("Caddy Bootstrap pidfile exists: #{pid}")
+      Logger.debug("Caddy Bootstrap pidfile exists: #{pid}")
       File.rm(pidfile)
       System.cmd("kill", ["-9", "#{pid}"])
       :ok

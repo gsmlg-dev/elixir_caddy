@@ -16,14 +16,14 @@ defmodule Caddy.Server do
   end
 
   def init(_) do
-    Logger.info("Caddy Server init")
+    Logger.debug("Caddy Server init")
     state = %{port: nil}
     Process.flag(:trap_exit, true)
     {:ok, state, {:continue, :start}}
   end
 
   def handle_continue(:start, state) do
-    Logger.info("Caddy Server Starting")
+    Logger.debug("Caddy Server Starting")
 
     with bin_path <- Caddy.Bootstrap.get(:bin_path),
          port <- port_start(bin_path) do
@@ -38,21 +38,21 @@ defmodule Caddy.Server do
   end
 
   def handle_info({port, {:exit_status, exit_status}}, state) do
-    Logger.info("Caddy#{inspect(port)}: exit_status: #{exit_status}")
+    Logger.warning("Caddy#{inspect(port)}: exit_status: #{exit_status}")
     Process.exit(self(), :normal)
     {:noreply, state}
   end
 
   # handle the trapped exit call
   def handle_info({:EXIT, _from, reason}, state) do
-    Logger.info("Caddy.Server exiting")
+    Logger.debug("Caddy.Server exiting")
     cleanup(reason, state)
     {:stop, reason, state}
   end
 
   # handle termination
   def terminate(reason, state) do
-    Logger.info("Caddy.Server terminating")
+    Logger.debug("Caddy.Server terminating")
     cleanup(reason, state)
     Caddy.Logger.Store.tail() |> Enum.each(&IO.puts("    " <> &1))
   end

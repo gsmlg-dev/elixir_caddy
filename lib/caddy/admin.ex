@@ -17,7 +17,7 @@ defmodule Caddy.Admin do
   end
 
   def init(_) do
-    Logger.info("Caddy Admin init")
+    Logger.debug("Caddy Admin init")
     Process.send_after(self(), :check_server, @check_interval)
     {:ok, %{}}
   end
