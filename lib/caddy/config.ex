@@ -10,6 +10,16 @@ defmodule Caddy.Config do
 
   use GenServer
 
+  @type t :: %__MODULE__{
+          bin: binary() | nil,
+          global: binary(),
+          additional: [binary()],
+          sites: Map.t(),
+          env: Map.t()
+        }
+
+  defstruct bin: nil, global: "", additional: [], sites: %{}, env: Map.new()
+
   defdelegate user_home, to: System
   def user_share(), do: Path.join(user_home(), ".local/share")
 
@@ -50,39 +60,16 @@ defmodule Caddy.Config do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
+  @spec init(keyword()) :: {:ok, %__MODULE__{}}
   def init(args) do
-    caddy_bin = Keyword.get(args, :caddy_bin)
-    caddy_file = Keyword.get(args, :caddy_file)
-    merge_saved = Keyword.get(args, :merge_saved, false)
+    bin = Keyword.get(args, :caddy_bin)
 
-    config =
-      if caddy_file == nil do
-        passed_config = Keyword.get(args, :config, %{})
-        config = initial()
+    confg = %__MODULE__{
+      env: init_env(),
+      bin: bin
+    }
 
-        config =
-          if merge_saved do
-            config |> Map.merge(saved())
-          else
-            config
-          end
-
-        config |> Map.merge(passed_config)
-      else
-        passed_config = parse_caddyfile(caddy_bin, caddy_file)
-        config = initial()
-
-        config =
-          if merge_saved do
-            config |> Map.merge(saved())
-          else
-            config
-          end
-
-        config |> Map.merge(passed_config)
-      end
-
-    {:ok, %{config: config, caddy_bin: caddy_bin}}
+    {:ok, confg}
   end
 
   def handle_call({:get, key}, _from, state) do
@@ -126,11 +113,17 @@ defmodule Caddy.Config do
     }
   end
 
-  def env() do
+  def to_caddyfile(%__MODULE__{global: global, additional: additional, sites: sites}) do
     """
-    HOME="#{share_path()}"
-    XDG_CONFIG_HOME="#{xdg_config_home()}"
-    XDG_DATA_HOME="#{xdg_data_home()}"
+    #{global}
+
+    #{Enum.join(additional, "\n\n")}
+
+    #{Enum.map(sites, fn {name, site} -> """
+      #{name} {
+        #{site}
+      }
+      """ end) |> Enum.join("\n\n")}
     """
   end
 
@@ -147,14 +140,9 @@ defmodule Caddy.Config do
     end
   end
 
-  def first_writable_or(paths, default) do
+  def first_writable(paths, default \\ nil) do
     paths
     |> Enum.find(default, &has_write_permission?/1)
-  end
-
-  def first_writable(paths) do
-    paths
-    |> Enum.find(&has_write_permission?/1)
   end
 
   def has_write_permission?(path) do
@@ -168,5 +156,52 @@ defmodule Caddy.Config do
       _ ->
         false
     end
+  end
+
+  def can_execute?(path) do
+    with true <- File.exists?(path),
+         {:ok, %File.Stat{access: access, mode: mode}} <- File.stat(path),
+         true <- access in [:read, :read_write],
+         0b100 <- Bitwise.band(mode, 0b100) do
+      true
+    else
+      _ ->
+        false
+    end
+  end
+
+  defp init_env() do
+    Map.new()
+    |> Map.put("HOME", share_path())
+    |> Map.put("XDG_CONFIG_HOME", xdg_config_home())
+    |> Map.put("XDG_DATA_HOME", xdg_data_home())
+  end
+
+  def command_stdin(command, binary_input) do
+    port = Port.open({:spawn, command}, [:binary, :exit_status, :use_stdio])
+    Port.command(port, binary_input)
+
+    binary_output =
+      receive do
+        {^port, {:data, data}} ->
+          data
+      after
+        5000 ->
+          IO.puts("No response received within timeout")
+          nil
+      end
+
+    # Handle port exit status (optional but recommended)
+    status =
+      receive do
+        {^port, {:exit_status, status}} ->
+          IO.puts("Port exited with status: #{status}")
+          status
+      after
+        1000 ->
+          :timeout
+      end
+
+    {binary_output, status}
   end
 end

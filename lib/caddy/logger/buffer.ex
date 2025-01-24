@@ -39,7 +39,9 @@ defmodule Caddy.Logger.Buffer do
     case Application.get_env(:caddy, Caddy.Logger.Buffer, :write_console) do
       true ->
         IO.puts(log)
-      _ -> nil
+
+      _ ->
+        nil
     end
   end
 end

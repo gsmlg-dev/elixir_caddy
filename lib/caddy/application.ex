@@ -6,11 +6,10 @@ defmodule Caddy.Application do
   @impl true
   def start(_type, args) do
     children = [
-      {Caddy, args},
+      {Caddy, args}
     ]
 
     opts = [strategy: :one_for_one, name: Caddy.Application]
     Supervisor.start_link(children, opts)
   end
-
 end

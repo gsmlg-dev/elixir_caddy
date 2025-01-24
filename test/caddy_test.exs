@@ -3,7 +3,7 @@ defmodule CaddyTest do
   doctest Caddy
 
   setup_all do
-    Caddy.start()
+    # Caddy.start()
 
     on_exit(fn ->
       nil

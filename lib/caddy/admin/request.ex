@@ -10,10 +10,10 @@ defmodule Caddy.Admin.Request do
   require Logger
 
   @type t :: %__MODULE__{
-    status: integer(),
-    headers: Keyword.t(),
-    body: binary(),
-  }
+          status: integer(),
+          headers: Keyword.t(),
+          body: binary()
+        }
 
   defstruct status: 0, headers: [], body: ""
 
