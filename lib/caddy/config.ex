@@ -15,10 +15,10 @@ defmodule Caddy.Config do
           global: binary(),
           additional: [binary()],
           sites: Map.t(),
-          env: Map.t()
+          env: list({binary(), binary()})
         }
 
-  defstruct bin: nil, global: "", additional: [], sites: %{}, env: Map.new()
+  defstruct bin: nil, global: "", additional: [], sites: %{}, env: []
 
   defdelegate user_home, to: System
   def user_share(), do: Path.join(user_home(), ".local/share")
@@ -47,13 +47,17 @@ defmodule Caddy.Config do
     paths() |> Enum.filter(&File.exists?(&1)) |> Kernel.==(paths())
   end
 
+  def get_config() do
+    GenServer.call(__MODULE__, :get_config)
+  end
+
   def get(name) do
     GenServer.call(__MODULE__, {:get, name})
   end
 
-  @spec adapt(binary(), binary()) :: {:ok, map()} | {:error, any()}
-  def adapt(binary, adapter \\ "caddyfile") do
-    GenServer.call(__MODULE__, {:adapt, {binary, adapter}})
+  @spec adapt(binary()) :: {:ok, map()} | {:error, any()}
+  def adapt(binary) do
+    GenServer.call(__MODULE__, {:adapt, binary})
   end
 
   def start_link(args) do
@@ -66,10 +70,15 @@ defmodule Caddy.Config do
 
     confg = %__MODULE__{
       env: init_env(),
-      bin: bin
+      bin: bin || System.find_executable("caddy"),
+      global: "admin unix/#{socket_file()}"
     }
 
     {:ok, confg}
+  end
+
+  def handle_call(:get_config, _from, state) do
+    {:reply, state, state}
   end
 
   def handle_call({:get, key}, _from, state) do
@@ -77,11 +86,12 @@ defmodule Caddy.Config do
     {:reply, value, state}
   end
 
-  def handle_call({:adapt, {binary, adapter}}, _from, %{caddy_bin: caddy_bin} = state) do
-    with tmp_config <- tmp_path() <> "/" <> adapter,
-         :ok <- File.write(tmp_config, binary),
-         {config_json, 0} <-
-           System.cmd(caddy_bin, ["adapt", "--adapter", adapter, "--config", tmp_config]),
+  def handle_call({:adapt, binary}, _from, %__MODULE__{bin: caddy_bin} = state) do
+    with tmp_config <- Path.expand("Caddyfile", tmp_path()),
+          :ok <- File.write(tmp_config, binary),
+          {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
+          {config_json, 0} <-
+            System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
          {:ok, config} <- Jason.decode(config_json) do
       {:reply, {:ok, config}, state}
     else
@@ -102,20 +112,11 @@ defmodule Caddy.Config do
     end
   end
 
-  def initial() do
-    admin_socket_path = "unix/" <> socket_file()
-
-    %{
-      "admin" => %{
-        "listen" => admin_socket_path,
-        "origins" => ["caddy-admin.local"]
-      }
-    }
-  end
-
   def to_caddyfile(%__MODULE__{global: global, additional: additional, sites: sites}) do
     """
+    {
     #{global}
+    }
 
     #{Enum.join(additional, "\n\n")}
 
@@ -158,6 +159,19 @@ defmodule Caddy.Config do
     end
   end
 
+  def check_bin(bin) do
+    if can_execute?(bin) do
+      case System.cmd(bin, ["version"]) do
+        {"v2" <> _, 0} ->
+          :ok
+        _ ->
+          {:error, "Caddy binary version check failed"}
+      end
+    else
+      {:error, "Caddy binary not found or not executable"}
+    end
+  end
+
   def can_execute?(path) do
     with true <- File.exists?(path),
          {:ok, %File.Stat{access: access, mode: mode}} <- File.stat(path),
@@ -171,13 +185,15 @@ defmodule Caddy.Config do
   end
 
   defp init_env() do
-    Map.new()
-    |> Map.put("HOME", share_path())
-    |> Map.put("XDG_CONFIG_HOME", xdg_config_home())
-    |> Map.put("XDG_DATA_HOME", xdg_data_home())
+    [
+      {"HOME", share_path()},
+      {"XDG_CONFIG_HOME", xdg_config_home()},
+      {"XDG_DATA_HOME", xdg_data_home()},
+    ]
   end
 
-  def command_stdin(command, binary_input) do
+  defp command_stdin(command, binary_input) do
+    IO.inspect({"command_stdin", command, binary_input})
     port = Port.open({:spawn, command}, [:binary, :exit_status, :use_stdio])
     Port.command(port, binary_input)
 
@@ -187,7 +203,7 @@ defmodule Caddy.Config do
           data
       after
         5000 ->
-          IO.puts("No response received within timeout")
+          Logger.debug("No response received within timeout")
           nil
       end
 
@@ -201,7 +217,7 @@ defmodule Caddy.Config do
         1000 ->
           :timeout
       end
-
+    Port.close(port)
     {binary_output, status}
   end
 end

@@ -27,7 +27,6 @@ defmodule Caddy do
   def init(args) do
     children = [
       {Caddy.Config, args},
-      Caddy.Bootstrap,
       Caddy.Logger.Buffer,
       Caddy.Logger.Store,
       Caddy.Server,
