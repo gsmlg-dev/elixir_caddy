@@ -1,14 +1,17 @@
 defmodule Caddy.MixProject do
   use Mix.Project
 
+  @source_url "https://github.com/gsmlg-dev/elixir_caddy.git"
+  @version "1.0.7"
+
   def project do
     [
       app: :caddy,
-      version: "1.0.7",
+      version: @version,
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       name: "Caddy",
-      description: "Run Caddy HTTP Server in supervisor tree",
+      description: "Run Caddy Reverse Proxy Server in supervisor tree",
       aliases: aliases(),
       package: package(),
       deps: deps()
@@ -35,18 +38,14 @@ defmodule Caddy.MixProject do
     [
       maintainers: ["Jonathan Gao"],
       licenses: ["MIT"],
-      files: ~w(lib priv LICENSE mix.exs README.md),
+      files: ~w(lib LICENSE mix.exs README.md),
       links: %{
+        Github: @source_url,
         Changelog: "https://hexdocs.pm/caddy/changelog.html"
       }
     ]
   end
 
-  # Aliases are shortcuts or tasks specific to the current project.
-  # For example, publish this package, run:
-  #
-  #     $ mix publish
-  #
   defp aliases do
     [
       setup: ["deps.get", "assets.setup"],
@@ -56,7 +55,7 @@ defmodule Caddy.MixProject do
           File.rm_rf!("priv")
           File.mkdir!("priv")
         end,
-        "hex.publish"
+        "hex.publish --yes"
       ]
     ]
   end
