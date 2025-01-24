@@ -16,7 +16,7 @@ defmodule Caddy.Server do
   end
 
   def init(_) do
-    Caddy.Bootstrap.init()
+    {:ok, _} = Caddy.Bootstrap.init()
     state = %{port: nil}
     Process.flag(:trap_exit, true)
     {:ok, state, {:continue, :start}}
@@ -25,7 +25,6 @@ defmodule Caddy.Server do
   def handle_continue(:start, state) do
     Logger.debug("Caddy Server Starting")
     config = Config.get_config()
-
     port = port_start(config)
     state = state |> Map.put(:port, port)
     {:noreply, state}
@@ -92,6 +91,7 @@ defmodule Caddy.Server do
       {:spawn_executable, bin_path},
       [
         {:args, args},
+        {:env, [{~c"name", ~c"caddy"}]},
         # {:env, env},
         :stream,
         :binary,
