@@ -1,4 +1,6 @@
 defmodule Caddy.Logger.Buffer do
+  @moduledoc false
+
   use GenServer
   require Logger
 

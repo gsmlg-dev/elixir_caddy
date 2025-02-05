@@ -1,11 +1,6 @@
 defmodule Caddy.Logger.Store do
-  @moduledoc """
+  @moduledoc false
 
-  Caddy Logger Store
-
-  Start Caddy Logger Store
-
-  """
   require Logger
 
   use GenServer

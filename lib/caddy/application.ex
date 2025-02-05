@@ -7,10 +7,9 @@ defmodule Caddy.Application do
   def start(_type, args) do
     children = [
       {Caddy.Config, args},
-      Caddy.Logger.Buffer,
-      Caddy.Logger.Store,
-      Caddy.Server,
-      Caddy.Admin
+      Caddy.Logger,
+      Caddy.Server
+      # Caddy.Admin
     ]
 
     opts = [strategy: :one_for_one, name: Caddy.Application]

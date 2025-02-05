@@ -3,7 +3,7 @@ defmodule Caddy.ConfigTest do
   alias Caddy.Config
 
   setup_all do
-    Caddy.Config.start_link([caddy_bin: System.find_executable("caddy")])
+    Caddy.Config.start_link(caddy_bin: System.find_executable("caddy"))
 
     on_exit(fn ->
       nil
@@ -13,7 +13,9 @@ defmodule Caddy.ConfigTest do
 
   test "test caddy conifg paths" do
     Config.ensure_path_exists()
-    Config.paths() |> Enum.each(fn(path) ->
+
+    Config.paths()
+    |> Enum.each(fn path ->
       assert File.exists?(path)
     end)
   end
@@ -37,6 +39,7 @@ defmodule Caddy.ConfigTest do
       file_server
     }
     """
+
     assert {:ok, config} = Config.adapt(cfg)
     assert "unix//run/caddy.socket" = get_in(config, ["admin", "listen"])
   end

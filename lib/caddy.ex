@@ -27,10 +27,9 @@ defmodule Caddy do
   def init(args) do
     children = [
       {Caddy.Config, args},
-      Caddy.Logger.Buffer,
-      Caddy.Logger.Store,
-      Caddy.Server,
-      Caddy.Admin
+      Caddy.Logger,
+      Caddy.Server
+      # Caddy.Admin
     ]
 
     opts = [strategy: :rest_for_one, name: __MODULE__]

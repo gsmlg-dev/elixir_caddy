@@ -88,10 +88,10 @@ defmodule Caddy.Config do
 
   def handle_call({:adapt, binary}, _from, %__MODULE__{bin: caddy_bin} = state) do
     with tmp_config <- Path.expand("Caddyfile", tmp_path()),
-          :ok <- File.write(tmp_config, binary),
-          {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
-          {config_json, 0} <-
-            System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
+         :ok <- File.write(tmp_config, binary),
+         {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
+         {config_json, 0} <-
+           System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
          {:ok, config} <- Jason.decode(config_json) do
       {:reply, {:ok, config}, state}
     else
@@ -164,6 +164,7 @@ defmodule Caddy.Config do
       case System.cmd(bin, ["version"]) do
         {"v2" <> _, 0} ->
           :ok
+
         _ ->
           {:error, "Caddy binary version check failed"}
       end
@@ -188,7 +189,7 @@ defmodule Caddy.Config do
     [
       {"HOME", share_path()},
       {"XDG_CONFIG_HOME", xdg_config_home()},
-      {"XDG_DATA_HOME", xdg_data_home()},
+      {"XDG_DATA_HOME", xdg_data_home()}
     ]
   end
 
@@ -217,6 +218,7 @@ defmodule Caddy.Config do
         1000 ->
           :timeout
       end
+
     Port.close(port)
     {binary_output, status}
   end
