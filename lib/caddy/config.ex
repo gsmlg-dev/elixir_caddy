@@ -69,6 +69,7 @@ defmodule Caddy.Config do
   end
 
   def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
+
   def set_site(name, site) do
     GenServer.call(__MODULE__, {:set_site, name, site})
   end
@@ -108,7 +109,7 @@ defmodule Caddy.Config do
   end
 
   def handle_call({:set_site, name, site}, _from, state) do
-    state = state |> Map.update(:sites, %{}, fn(sites) -> Map.put(sites, name, site) end)
+    state = state |> Map.update(:sites, %{}, fn sites -> Map.put(sites, name, site) end)
     {:reply, {:ok, name, site}, state}
   end
 
@@ -147,19 +148,19 @@ defmodule Caddy.Config do
     #{Enum.join(additional, "\n\n")}
 
     #{Enum.map(sites, fn
-      ({name, site}) when is_binary(site) -> """
+      {name, site} when is_binary(site) -> """
         ## #{name}
         #{name} {
           #{site}
         }
         """
-      ({name, {listen, site}}) when is_binary(site) -> """
+      {name, {listen, site}} when is_binary(site) -> """
         ## #{name}
         #{listen} {
           #{site}
         }
         """
-      (_) -> ""
+      _ -> ""
     end) |> Enum.join("\n\n")}
     """
   end
