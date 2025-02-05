@@ -73,6 +73,10 @@ defmodule Caddy.Server do
     Caddy.Logger.Store.tail() |> Enum.each(&IO.puts("    " <> &1))
   end
 
+  def get_caddyfile() do
+    Path.expand("Caddyfile", Config.etc_path()) |> File.read!()
+  end
+
   defp init_config_file(%Config{} = config) do
     with caddyfile <- Config.to_caddyfile(config),
          {:ok, config_map} <- Config.adapt(caddyfile),
@@ -151,7 +155,7 @@ defmodule Caddy.Server do
   defp fixup_env(env) when is_list(env) do
     env
     |> Enum.map(fn
-      {k, v} when is_nil(v) -> nil
+      {_k, v} when is_nil(v) -> nil
       {k, v} -> {k |> to_charlist(), v |> to_charlist()}
     end)
     |> Enum.filter(&is_tuple/1)

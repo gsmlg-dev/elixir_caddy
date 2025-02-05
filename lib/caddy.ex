@@ -1,7 +1,12 @@
 defmodule Caddy do
   @moduledoc """
+
   # Caddy
+
   Start Caddy HTTP Server in supervisor tree
+
+
+
   """
   require Logger
 
@@ -26,8 +31,8 @@ defmodule Caddy do
   @impl true
   def init(args) do
     children = [
-      {Caddy.Config, args},
       Caddy.Logger,
+      {Caddy.Config, args},
       Caddy.Server
       # Caddy.Admin
     ]

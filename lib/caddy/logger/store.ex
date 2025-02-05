@@ -18,8 +18,6 @@ defmodule Caddy.Logger.Store do
   end
 
   def init(args) do
-    Logger.debug("Caddy Logger Store init")
-
     {:ok, args}
   end
 

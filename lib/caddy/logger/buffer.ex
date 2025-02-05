@@ -13,7 +13,6 @@ defmodule Caddy.Logger.Buffer do
   end
 
   def init(args) do
-    Logger.debug("Caddy Logger Buffer init")
     {:ok, args}
   end
 

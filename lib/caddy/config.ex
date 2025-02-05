@@ -14,7 +14,7 @@ defmodule Caddy.Config do
           bin: binary() | nil,
           global: binary(),
           additional: [binary()],
-          sites: Map.t(),
+          sites: map(),
           env: list({binary(), binary()})
         }
 
@@ -47,6 +47,10 @@ defmodule Caddy.Config do
     paths() |> Enum.filter(&File.exists?(&1)) |> Kernel.==(paths())
   end
 
+  def set_config(%__MODULE__{} = config) do
+    GenServer.call(__MODULE__, {:set_config, config})
+  end
+
   def get_config() do
     GenServer.call(__MODULE__, :get_config)
   end
@@ -58,6 +62,15 @@ defmodule Caddy.Config do
   @spec adapt(binary()) :: {:ok, map()} | {:error, any()}
   def adapt(binary) do
     GenServer.call(__MODULE__, {:adapt, binary})
+  end
+
+  def set_global(global) do
+    GenServer.call(__MODULE__, {:set_global, global})
+  end
+
+  def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
+  def set_site(name, site) do
+    GenServer.call(__MODULE__, {:set_site, name, site})
   end
 
   def start_link(args) do
@@ -86,8 +99,21 @@ defmodule Caddy.Config do
     {:reply, value, state}
   end
 
+  def handle_call({:set_config, config}, _from, state) do
+    {:reply, {:ok, state}, config}
+  end
+
+  def handle_call({:set_global, global}, _from, state) do
+    {:reply, {:ok, global}, state |> Map.put(:global, global)}
+  end
+
+  def handle_call({:set_site, name, site}, _from, state) do
+    state = state |> Map.update(:sites, %{}, fn(sites) -> Map.put(sites, name, site) end)
+    {:reply, {:ok, name, site}, state}
+  end
+
   def handle_call({:adapt, binary}, _from, %__MODULE__{bin: caddy_bin} = state) do
-    with tmp_config <- Path.expand("Caddyfile", tmp_path()),
+    with tmp_config <- Path.expand("Caddyfile", etc_path()),
          :ok <- File.write(tmp_config, binary),
          {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
          {config_json, 0} <-
@@ -120,11 +146,21 @@ defmodule Caddy.Config do
 
     #{Enum.join(additional, "\n\n")}
 
-    #{Enum.map(sites, fn {name, site} -> """
-      #{name} {
-        #{site}
-      }
-      """ end) |> Enum.join("\n\n")}
+    #{Enum.map(sites, fn
+      ({name, site}) when is_binary(site) -> """
+        ## #{name}
+        #{name} {
+          #{site}
+        }
+        """
+      ({name, {listen, site}}) when is_binary(site) -> """
+        ## #{name}
+        #{listen} {
+          #{site}
+        }
+        """
+      (_) -> ""
+    end) |> Enum.join("\n\n")}
     """
   end
 
@@ -193,33 +229,33 @@ defmodule Caddy.Config do
     ]
   end
 
-  defp command_stdin(command, binary_input) do
-    IO.inspect({"command_stdin", command, binary_input})
-    port = Port.open({:spawn, command}, [:binary, :exit_status, :use_stdio])
-    Port.command(port, binary_input)
+  # defp command_stdin(command, binary_input) do
+  #   IO.inspect({"command_stdin", command, binary_input})
+  #   port = Port.open({:spawn, command}, [:binary, :exit_status, :use_stdio])
+  #   Port.command(port, binary_input)
 
-    binary_output =
-      receive do
-        {^port, {:data, data}} ->
-          data
-      after
-        5000 ->
-          Logger.debug("No response received within timeout")
-          nil
-      end
+  #   binary_output =
+  #     receive do
+  #       {^port, {:data, data}} ->
+  #         data
+  #     after
+  #       5000 ->
+  #         Logger.debug("No response received within timeout")
+  #         nil
+  #     end
 
-    # Handle port exit status (optional but recommended)
-    status =
-      receive do
-        {^port, {:exit_status, status}} ->
-          IO.puts("Port exited with status: #{status}")
-          status
-      after
-        1000 ->
-          :timeout
-      end
+  #   # Handle port exit status (optional but recommended)
+  #   status =
+  #     receive do
+  #       {^port, {:exit_status, status}} ->
+  #         IO.puts("Port exited with status: #{status}")
+  #         status
+  #     after
+  #       1000 ->
+  #         :timeout
+  #     end
 
-    Port.close(port)
-    {binary_output, status}
-  end
+  #   Port.close(port)
+  #   {binary_output, status}
+  # end
 end
