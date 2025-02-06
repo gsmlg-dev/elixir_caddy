@@ -37,7 +37,8 @@ jobs:
 
       - name: Install Deps
         env:
-          MIX_ENV: prod
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: |
           mix deps.get
           sed -i 's%@version "[0-9\.]\+"%@version "${{ github.event.inputs.release-version }}"%' mix.exs
@@ -45,7 +46,6 @@ jobs:
 
       - name: Publish to hex.pm
         env:
-          MIX_ENV: prod
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: |
