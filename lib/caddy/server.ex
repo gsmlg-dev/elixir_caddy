@@ -113,7 +113,7 @@ defmodule Caddy.Server do
       pid = pidfile |> File.read!() |> String.trim()
 
       if Regex.match?(~r/\d+/, pid) do
-        Logger.debug("Caddy Bootstrap pidfile exists: `kill -9 #{pid}`")
+        Logger.debug("Caddy pidfile exists: `kill -9 #{pid}`")
         System.cmd("kill", ["-9", "#{pid}"])
       end
 

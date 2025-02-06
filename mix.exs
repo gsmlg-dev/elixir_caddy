@@ -26,7 +26,6 @@ defmodule Caddy.MixProject do
 
   defp deps do
     [
-      {:httpoison, "~> 2.0"},
       {:jason, "~> 1.4"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
@@ -46,7 +45,6 @@ defmodule Caddy.MixProject do
 
   defp aliases do
     [
-      setup: ["deps.get", "assets.setup"],
       publish: [
         "format",
         fn _ ->

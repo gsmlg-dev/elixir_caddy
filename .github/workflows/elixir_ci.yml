@@ -1,8 +1,6 @@
 name: Elixir CI
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -24,15 +22,15 @@ jobs:
         elixir-version: 1.18
         otp-version: 27
 
-    - name: Restore dependencies cache
-      uses: actions/cache@v3
-      with:
-        path: deps
-        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-
     - name: Install dependencies
-      run: mix deps.get --only test
+      run: mix deps.get
+      env:
+        MIX_ENV: test
+
+    - name: Install caddy
+      run: |
+        curl -sSLf https://github.com/gsmlg-dev/Foundation/releases/download/caddy-v2.8.4/caddy_linux_amd64 -o /usr/bin/caddy
+        chmod +x /usr/bin/caddy
 
     - name: Run tests
       run: mix test
