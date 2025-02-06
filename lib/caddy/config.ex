@@ -166,11 +166,17 @@ defmodule Caddy.Config do
 
   @spec init(keyword()) :: {:ok, %__MODULE__{}}
   def init(args) do
-    bin = Keyword.get(args, :caddy_bin)
+    bin =
+      with true <- Keyword.keyword?(args),
+           true <- Keyword.has_key?(args, :caddy_bin) do
+        Keyword.get(args, :caddy_bin)
+      else
+        _ -> nil
+      end
 
     confg = %__MODULE__{
       env: init_env(),
-      bin: bin || System.find_executable("caddy"),
+      bin: bin,
       global: "admin unix/#{socket_file()}"
     }
 
@@ -310,7 +316,7 @@ defmodule Caddy.Config do
   end
 
   @doc false
-  def can_execute?(path) do
+  def can_execute?(path) when is_binary(path) do
     with true <- File.exists?(path),
          {:ok, %File.Stat{access: access, mode: mode}} <- File.stat(path),
          true <- access in [:read, :read_write],
@@ -321,6 +327,8 @@ defmodule Caddy.Config do
         false
     end
   end
+
+  def can_execute?(_), do: false
 
   defp init_env() do
     [

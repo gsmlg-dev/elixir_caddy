@@ -12,20 +12,6 @@ Add this in `deps` in `mix.exs` to install
 {:caddy, "~> 2.0"}
 ```
 
-Start in Application supervisor
-
-```elixir
-def start(_type, _args) do
-  children = [
-    # Start a Caddy by calling: Caddy.start_link([])
-    {Caddy, caddy_bin: "/path/to/caddy"}
-  ]
-
-  opts = [strategy: :one_for_one, name: PhoenixWeb.Supervisor]
-  Supervisor.start_link(children, opts)
-end
-```
-
 Start in extra_applications
 
 ```elixir
