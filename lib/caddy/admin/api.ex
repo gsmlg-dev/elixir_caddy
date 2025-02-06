@@ -1,9 +1,9 @@
 defmodule Caddy.Admin.Api do
-  @moduledoc """
+  @moduledoc false
+  require Logger
 
-  Control Caddy Server through admin socket
-
-  ### Admin API
+  @doc """
+  ## Admin API
 
   ```
   POST /load Sets or replaces the active configuration
@@ -20,10 +20,7 @@ defmodule Caddy.Admin.Api do
   GET /pki/ca/<id>/certificates Returns the certificate chain of a particular PKI app CA
   GET /reverse_proxy/upstreams Returns the current status of the configured proxy upstreams
   ```
-
   """
-  require Logger
-
   alias Caddy.Admin.Request
 
   @doc """

@@ -40,7 +40,19 @@ defmodule Caddy do
   * Notice
 
   If caddy_bin is not specifiy, Caddy.Server will not start.
-  You can set it latter by `Caddy.Config.set_bin("path/to/caddy")` and restart server by `Caddy.restart_server()`
+
+  Set `caddy_bin` to the path of Caddy binary file and start `Caddy.Server`.
+
+  ```
+  Caddy.Cofnig.set_bin("/usr/bin/caddy")
+  Caddy.restart_server()
+  ```
+
+  This will restart server automatically
+
+  ```
+  Caddy.Cofnig.set_bin!("/usr/bin/caddy")
+  ```
 
   """
   require Logger
@@ -61,8 +73,14 @@ defmodule Caddy do
     end
   end
 
-  @spec start(caddy_bin: binary) :: :ignore | {:error, any()} | {:ok, pid()}
-  def start(caddy_bin: caddy_bin), do: start_link(caddy_bin: caddy_bin)
+  @doc """
+  Manually Start Caddy Server.
+
+  This is useful when you want to start Caddy Server in `iex` console.
+
+  """
+  @spec start(binary()) :: :ignore | {:error, any()} | {:ok, pid()}
+  def start(caddy_bin), do: start_link(caddy_bin: caddy_bin)
 
   @spec start() :: :ignore | {:error, any()} | {:ok, pid()}
   def start() do

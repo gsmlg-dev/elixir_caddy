@@ -3,7 +3,12 @@ defmodule Caddy.Server do
 
   Caddy Server
 
-  Start Caddy Server
+  Start Caddy Server in `Port` and `GenServer` to handle the server process.
+  Server outputs are save to Caddy.Logger process.
+
+  Won'nt start if Caddy binary not found or not executable.
+
+  Could be started by `Caddy.restart_server()` when Caddy binary is set.
 
   """
   require Logger
@@ -11,29 +16,8 @@ defmodule Caddy.Server do
 
   use GenServer
 
-  def stop(), do: GenServer.stop(__MODULE__)
-
   def start_link(_) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  def bootstrap() do
-    Logger.debug("Caddy Server bootstrap")
-
-    with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
-         {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
-         {:get_config, config} <- {:get_config, Config.get_config()},
-         {:can_execute, true} <- {:can_execute, Config.can_execute?(config.bin)},
-         {:ok, config_path} <- init_config_file(config) do
-      {:ok, config_path}
-    else
-      {:can_execute, _} ->
-        {:error, :can_execute}
-
-      error ->
-        Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
-        {:error, error}
-    end
   end
 
   def init(_) do
@@ -56,6 +40,7 @@ defmodule Caddy.Server do
     end
   end
 
+  @doc false
   def handle_continue(:start, state) do
     Logger.debug("Caddy Server Starting")
     config = Config.get_config()
@@ -89,8 +74,31 @@ defmodule Caddy.Server do
     Caddy.Logger.Store.tail() |> Enum.each(&IO.puts("    " <> &1))
   end
 
+  @doc """
+  Get Caddyfile content of the current running server
+  """
+  @spec get_caddyfile() :: binary()
   def get_caddyfile() do
     Path.expand("Caddyfile", Config.etc_path()) |> File.read!()
+  end
+
+  defp bootstrap() do
+    Logger.debug("Caddy Server bootstrap")
+
+    with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
+         {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
+         {:get_config, config} <- {:get_config, Config.get_config()},
+         {:can_execute, true} <- {:can_execute, Config.can_execute?(config.bin)},
+         {:ok, config_path} <- init_config_file(config) do
+      {:ok, config_path}
+    else
+      {:can_execute, _} ->
+        {:error, :can_execute}
+
+      error ->
+        Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
+        {:error, error}
+    end
   end
 
   defp init_config_file(%Config{} = config) do

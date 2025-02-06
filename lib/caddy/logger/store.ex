@@ -3,6 +3,8 @@ defmodule Caddy.Logger.Store do
 
   require Logger
 
+  @keep_lines 50_000
+
   use GenServer
 
   def write(log) do
@@ -22,7 +24,7 @@ defmodule Caddy.Logger.Store do
   end
 
   def handle_cast({:write, log}, state) do
-    {:noreply, [log | state] |> Enum.take(50_000)}
+    {:noreply, [log | state] |> Enum.take(@keep_lines)}
   end
 
   def handle_call({:tail, n}, _from, state) do

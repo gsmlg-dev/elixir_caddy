@@ -1,9 +1,5 @@
 defmodule Caddy.Admin.Request do
-  @moduledoc """
-
-  Req, send request through socket
-
-  """
+  @moduledoc false
 
   alias Caddy.Admin.Request
   alias Caddy.Config

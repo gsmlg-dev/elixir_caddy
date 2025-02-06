@@ -1,11 +1,5 @@
 defmodule Caddy.Admin do
-  @moduledoc """
-
-  Caddy Admin
-
-  Start Caddy Admin
-
-  """
+  @moduledoc false
   require Logger
 
   use GenServer
@@ -33,6 +27,6 @@ defmodule Caddy.Admin do
   rescue
     error ->
       Logger.error("Caddy Admin: check_caddy_server failed #{inspect(error)}")
-      Caddy.Server.stop()
+      Caddy.restart_server()
   end
 end

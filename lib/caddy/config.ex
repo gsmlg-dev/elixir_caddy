@@ -1,9 +1,19 @@
 defmodule Caddy.Config do
   @moduledoc """
 
-  Caddy Config
+  Start Caddy Config process to manage Caddy configuration.
 
-  Start Caddy Config
+  Configuration is stored in `%Caddy.Config{}` struct in `Caddy.Config` process.
+
+  ```
+  %Caddy.Config{
+    bin: binary() | nil,
+    global: binary(),
+    additional: [binary()],
+    sites: map(),
+    env: list({binary(), binary()})
+  }
+  ```
 
   """
   require Logger

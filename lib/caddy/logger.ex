@@ -1,9 +1,11 @@
 defmodule Caddy.Logger do
   @moduledoc """
 
-  Caddy Logger
-
   Start Caddy Logger
+
+  Collect caddy process logs from stdout and stderr.
+
+  Keep latest 50_000 lines of logs.
 
   """
 
@@ -11,10 +13,15 @@ defmodule Caddy.Logger do
 
   use Supervisor
 
+  @doc false
   def write(log) do
     GenServer.cast(Caddy.Logger.Store, {:write, log})
   end
 
+  @doc """
+  Get latest `num` logs
+  """
+  @spec tail(integer()) :: list(binary())
   def tail(num \\ 100) do
     GenServer.call(Caddy.Logger.Store, {:tail, num})
   end
