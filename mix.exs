@@ -14,7 +14,8 @@ defmodule Caddy.MixProject do
       description: "Run Caddy Reverse Proxy Server in supervisor tree",
       aliases: aliases(),
       package: package(),
-      deps: deps()
+      deps: deps(),
+      docs: docs()
     ]
   end
 
@@ -40,6 +41,15 @@ defmodule Caddy.MixProject do
         Github: @source_url,
         Changelog: "https://hexdocs.pm/caddy/changelog.html"
       }
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md"],
+      source_url: @source_url,
+      source_ref: "v#{@version}"
     ]
   end
 

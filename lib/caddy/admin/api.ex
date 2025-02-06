@@ -2,6 +2,8 @@ defmodule Caddy.Admin.Api do
   @moduledoc false
   require Logger
 
+  alias Caddy.Admin.Request
+
   @doc """
   ## Admin API
 
@@ -21,7 +23,7 @@ defmodule Caddy.Admin.Api do
   GET /reverse_proxy/upstreams Returns the current status of the configured proxy upstreams
   ```
   """
-  alias Caddy.Admin.Request
+  def api(), do: nil
 
   @doc """
   Get info from caddy server

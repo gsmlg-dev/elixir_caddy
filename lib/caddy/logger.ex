@@ -5,7 +5,7 @@ defmodule Caddy.Logger do
 
   Collect caddy process logs from stdout and stderr.
 
-  Keep latest 50_000 lines of logs.
+  Keep latest `50_000` lines of logs.
 
   """
 
