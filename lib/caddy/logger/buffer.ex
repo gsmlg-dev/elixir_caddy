@@ -1,4 +1,6 @@
 defmodule Caddy.Logger.Buffer do
+  @moduledoc false
+
   use GenServer
   require Logger
 
@@ -11,7 +13,6 @@ defmodule Caddy.Logger.Buffer do
   end
 
   def init(args) do
-    Logger.debug("Caddy Logger Buffer init")
     {:ok, args}
   end
 
@@ -39,7 +40,9 @@ defmodule Caddy.Logger.Buffer do
     case Application.get_env(:caddy, Caddy.Logger.Buffer, :write_console) do
       true ->
         IO.puts(log)
-      _ -> nil
+
+      _ ->
+        nil
     end
   end
 end

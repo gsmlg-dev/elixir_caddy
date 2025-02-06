@@ -31,7 +31,8 @@ defmodule Caddy.Admin do
   defp check_caddy_server() do
     %{"listen" => "unix/" <> _} = Caddy.Admin.Api.get_config("admin")
   rescue
-    _ ->
-      Caddy.Bootstrap.restart()
+    error ->
+      Logger.error("Caddy Admin: check_caddy_server failed #{inspect(error)}")
+      Caddy.Server.stop()
   end
 end

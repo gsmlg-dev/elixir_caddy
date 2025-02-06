@@ -11,25 +11,57 @@ defmodule Caddy.Server do
 
   use GenServer
 
+  def stop(), do: GenServer.stop(__MODULE__)
+
   def start_link(_) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  def bootstrap() do
+    Logger.debug("Caddy Server bootstrap")
+
+    with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
+         {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
+         {:get_config, config} <- {:get_config, Config.get_config()},
+         {:can_execute, true} <- {:can_execute, Config.can_execute?(config.bin)},
+         {:ok, config_path} <- init_config_file(config) do
+      {:ok, config_path}
+    else
+      {:can_execute, _} ->
+        {:error, :can_execute}
+
+      error ->
+        Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
+        {:error, error}
+    end
+  end
+
   def init(_) do
-    Logger.debug("Caddy Server init")
-    state = %{port: nil}
-    Process.flag(:trap_exit, true)
-    {:ok, state, {:continue, :start}}
+    case bootstrap() do
+      {:ok, _} ->
+        state = %{port: nil}
+        Process.flag(:trap_exit, true)
+        {:ok, state, {:continue, :start}}
+
+      {:error, :can_execute} ->
+        Logger.warning(
+          ~s[Caddy binary not found or not executable. You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later, then restart server by `Caddy.restart_server()`]
+        )
+
+        :ignore
+
+      {:error, error} ->
+        Logger.error("Caddy Server init error: #{inspect(error)}")
+        {:stop, error}
+    end
   end
 
   def handle_continue(:start, state) do
     Logger.debug("Caddy Server Starting")
-
-    with bin_path <- Caddy.Bootstrap.get(:bin_path),
-         port <- port_start(bin_path) do
-      state = state |> Map.put(:port, port)
-      {:noreply, state}
-    end
+    config = Config.get_config()
+    port = port_start(config)
+    state = state |> Map.put(:port, port)
+    {:noreply, state}
   end
 
   def handle_info({_port, {:data, msg}}, state) do
@@ -57,6 +89,41 @@ defmodule Caddy.Server do
     Caddy.Logger.Store.tail() |> Enum.each(&IO.puts("    " <> &1))
   end
 
+  def get_caddyfile() do
+    Path.expand("Caddyfile", Config.etc_path()) |> File.read!()
+  end
+
+  defp init_config_file(%Config{} = config) do
+    with caddyfile <- Config.to_caddyfile(config),
+         {:ok, config_map} <- Config.adapt(caddyfile),
+         {:ok, cfg} <- Jason.encode(config_map),
+         :ok <- File.write(Config.init_file(), cfg) do
+      {:ok, Config.init_file()}
+    else
+      error ->
+        Logger.error("[init_config_file] error: #{inspect(error)}")
+        {:error, error}
+    end
+  end
+
+  defp cleanup_pidfile() do
+    pidfile = Config.pid_file()
+
+    if pidfile |> File.exists?() do
+      pid = pidfile |> File.read!() |> String.trim()
+
+      if Regex.match?(~r/\d+/, pid) do
+        Logger.debug("Caddy pidfile exists: `kill -9 #{pid}`")
+        System.cmd("kill", ["-9", "#{pid}"])
+      end
+
+      File.rm(pidfile)
+      :ok
+    else
+      :ok
+    end
+  end
+
   defp cleanup(reason, %{port: port} = _state) do
     case port |> Port.info(:os_pid) do
       {:os_pid, pid} ->
@@ -67,11 +134,7 @@ defmodule Caddy.Server do
         0
     end
 
-    pidfile = Config.pid_file()
-
-    if pidfile |> File.exists?() do
-      File.rm(pidfile)
-    end
+    cleanup_pidfile()
 
     case reason do
       :normal -> :normal
@@ -80,11 +143,9 @@ defmodule Caddy.Server do
     end
   end
 
-  defp port_start(bin_path) do
+  defp port_start(%Config{bin: bin_path, env: env}) do
     args = [
       "run",
-      "--envfile",
-      Config.env_file(),
       "--config",
       Config.init_file(),
       "--pidfile",
@@ -95,6 +156,8 @@ defmodule Caddy.Server do
       {:spawn_executable, bin_path},
       [
         {:args, args},
+        {:env, [{~c"name", ~c"caddy"}]},
+        {:env, fixup_env(env)},
         :stream,
         :binary,
         :exit_status,
@@ -104,4 +167,15 @@ defmodule Caddy.Server do
       ]
     )
   end
+
+  defp fixup_env(env) when is_list(env) do
+    env
+    |> Enum.map(fn
+      {_k, v} when is_nil(v) -> nil
+      {k, v} -> {k |> to_charlist(), v |> to_charlist()}
+    end)
+    |> Enum.filter(&is_tuple/1)
+  end
+
+  defp fixup_env(_), do: []
 end
