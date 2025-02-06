@@ -1,6 +1,8 @@
 # Caddy
 
-By set `mix.exs` to install
+[![release](https://github.com/gsmlg-dev/elixir_caddy/actions/workflows/release.yml/badge.svg)](https://github.com/gsmlg-dev/elixir_caddy/actions/workflows/release.yml)
+
+Add this in `deps` in `mix.exs` to install
 
 ```elixir
 {:caddy, "~> 2.0"}
