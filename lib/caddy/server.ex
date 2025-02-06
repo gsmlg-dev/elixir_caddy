@@ -18,15 +18,18 @@ defmodule Caddy.Server do
   end
 
   def bootstrap() do
-    Logger.debug("Caddy Server is bootstrapping...")
+    Logger.debug("Caddy Server bootstrap")
 
-    with true <- Config.ensure_path_exists(),
-         :ok <- cleanup_pidfile(),
-         config <- Config.get_config(),
-         true <- Config.can_execute?(config.bin),
+    with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
+         {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
+         {:get_config, config} <- {:get_config, Config.get_config()},
+         {:can_execute, true} <- {:can_execute, Config.can_execute?(config.bin)},
          {:ok, config_path} <- init_config_file(config) do
       {:ok, config_path}
     else
+      {:can_execute, _} ->
+        {:error, :can_execute}
+
       error ->
         Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
         {:error, error}
@@ -34,10 +37,23 @@ defmodule Caddy.Server do
   end
 
   def init(_) do
-    {:ok, _} = bootstrap()
-    state = %{port: nil}
-    Process.flag(:trap_exit, true)
-    {:ok, state, {:continue, :start}}
+    case bootstrap() do
+      {:ok, _} ->
+        state = %{port: nil}
+        Process.flag(:trap_exit, true)
+        {:ok, state, {:continue, :start}}
+
+      {:error, :can_execute} ->
+        Logger.warning(
+          ~s[Caddy binary not found or not executable. You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later, then restart server by `Caddy.restart_server()`]
+        )
+
+        :ignore
+
+      {:error, error} ->
+        Logger.error("Caddy Server init error: #{inspect(error)}")
+        {:stop, error}
+    end
   end
 
   def handle_continue(:start, state) do

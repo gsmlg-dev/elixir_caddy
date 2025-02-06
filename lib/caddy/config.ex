@@ -18,6 +18,11 @@ defmodule Caddy.Config do
           env: list({binary(), binary()})
         }
 
+  @type caddyfile :: binary()
+  @type site_name :: binary()
+  @type site_listen :: binary()
+  @type site_config :: caddyfile() | {site_listen(), caddyfile()}
+
   defstruct bin: nil, global: "", additional: [], sites: %{}, env: []
 
   defdelegate user_home, to: System
@@ -37,8 +42,10 @@ defmodule Caddy.Config do
   def socket_file(), do: Path.join(run_path(), "caddy.sock")
   def saved_json_file(), do: Path.join(xdg_config_home(), "caddy/autosave.json")
 
+  @doc false
   def paths(), do: [priv_path(), share_path(), etc_path(), run_path(), tmp_path()]
 
+  @doc false
   def ensure_path_exists() do
     paths()
     |> Enum.filter(&(!File.exists?(&1)))
@@ -47,27 +54,96 @@ defmodule Caddy.Config do
     paths() |> Enum.filter(&File.exists?(&1)) |> Kernel.==(paths())
   end
 
+  @doc """
+  Replace the current configuration in `Caddy.Config`
+  """
+  @spec set_config(t()) :: {:ok, t()} | {:error, term()}
   def set_config(%__MODULE__{} = config) do
     GenServer.call(__MODULE__, {:set_config, config})
   end
 
+  @doc """
+  Return the current configuration in `Caddy.Config`
+  """
+  @spec get_config() :: t()
   def get_config() do
     GenServer.call(__MODULE__, :get_config)
   end
 
+  @doc """
+  Get the :key in Caddy Cofnig
+  """
+  @spec get(atom()) :: binary() | nil
   def get(name) do
     GenServer.call(__MODULE__, {:get, name})
   end
 
-  @spec adapt(binary()) :: {:ok, map()} | {:error, any()}
+  @doc """
+  Convert caddyfile to json format.
+  """
+  @spec adapt(caddyfile()) :: {:ok, map()} | {:error, term()}
   def adapt(binary) do
     GenServer.call(__MODULE__, {:adapt, binary})
   end
 
+  @doc """
+  Set the Caddy binary path
+  """
+  @spec set_bin(binary()) :: {:ok, binary()} | {:error, term()}
+  def set_bin(caddy_bin) do
+    GenServer.call(__MODULE__, {:set_bin, caddy_bin})
+  end
+
+  @doc """
+  Set the caddy binary path and restart Caddy.Server
+  """
+  @spec set_bin!(binary()) :: :ok | {:error, term()}
+  def set_bin!(caddy_bin) do
+    {:ok, _} = GenServer.call(__MODULE__, {:set_bin, caddy_bin})
+
+    case Caddy.restart_server() do
+      {:ok, _, _} -> :ok
+      {:ok, _} -> :ok
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  @doc """
+  Set the global configuration
+
+  ```
+  Caddy.Config.set_global(\"\"\"
+  debug
+  auto_https off
+  \"\"\")
+  ```
+  """
+  @spec set_global(caddyfile()) :: {:ok, caddyfile()} | {:error, term()}
   def set_global(global) do
     GenServer.call(__MODULE__, {:set_global, global})
   end
 
+  @doc """
+  Set the site configuration
+
+  ```
+  Caddy.Config.set_site("www.gsmlg.com", \"\"\"
+  reverse_proxy {
+    to localhost:4000
+    header_up host www.gsmlg.com
+    header_up X-Real-IP {remote_host}
+  }
+  \"\"\")
+  # or
+  Caddy.Config.set_site("proxy", {":8080", \"\"\"
+  reverse_proxy {
+    to localhost:3128
+  }
+  \"\"\"})
+  ```
+  """
+  @spec set_site(site_name(), site_config()) ::
+          {:ok, site_name(), site_config()} | {:error, term()}
   def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
 
   def set_site(name, site) do
@@ -102,6 +178,11 @@ defmodule Caddy.Config do
 
   def handle_call({:set_config, config}, _from, state) do
     {:reply, {:ok, state}, config}
+  end
+
+  def handle_call({:set_bin, caddy_bin}, _from, state) do
+    state = state |> Map.put(:bin, caddy_bin)
+    {:reply, {:ok, caddy_bin}, state}
   end
 
   def handle_call({:set_global, global}, _from, state) do
@@ -139,6 +220,10 @@ defmodule Caddy.Config do
     end
   end
 
+  @doc """
+  Confirt `%Caddy.Config{}` to `caddyfile()`
+  """
+  @spec to_caddyfile(t()) :: caddyfile()
   def to_caddyfile(%__MODULE__{global: global, additional: additional, sites: sites}) do
     """
     {
@@ -165,6 +250,7 @@ defmodule Caddy.Config do
     """
   end
 
+  @doc false
   @spec parse_caddyfile(binary(), Path.t()) :: map()
   def parse_caddyfile(caddy_bin, caddy_file) do
     with {config_json, 0} <-
@@ -178,11 +264,13 @@ defmodule Caddy.Config do
     end
   end
 
+  @doc false
   def first_writable(paths, default \\ nil) do
     paths
     |> Enum.find(default, &has_write_permission?/1)
   end
 
+  @doc false
   def has_write_permission?(path) do
     case File.stat(path) do
       {:ok, %File.Stat{access: :write} = _stat} ->
@@ -196,6 +284,7 @@ defmodule Caddy.Config do
     end
   end
 
+  @doc false
   def check_bin(bin) do
     if can_execute?(bin) do
       case System.cmd(bin, ["version"]) do
@@ -210,6 +299,7 @@ defmodule Caddy.Config do
     end
   end
 
+  @doc false
   def can_execute?(path) do
     with true <- File.exists?(path),
          {:ok, %File.Stat{access: access, mode: mode}} <- File.stat(path),

@@ -37,10 +37,32 @@ defmodule Caddy do
   end
   ```
 
+  * Notice
+
+  If caddy_bin is not specifiy, Caddy.Server will not start.
+  You can set it latter by `Caddy.Config.set_bin("path/to/caddy")` and restart server by `Caddy.restart_server()`
+
   """
   require Logger
 
   use Supervisor
+
+  @doc """
+  Restart Caddy Server
+  """
+  def restart_server() do
+    case Supervisor.restart_child(__MODULE__, Caddy.Server) do
+      {:error, :running} ->
+        Supervisor.terminate_child(__MODULE__, Caddy.Server)
+        Supervisor.restart_child(__MODULE__, Caddy.Server)
+
+      out ->
+        out
+    end
+  end
+
+  @spec start(caddy_bin: binary) :: :ignore | {:error, any()} | {:ok, pid()}
+  def start(caddy_bin: caddy_bin), do: start_link(caddy_bin: caddy_bin)
 
   @spec start() :: :ignore | {:error, any()} | {:ok, pid()}
   def start() do
@@ -61,8 +83,8 @@ defmodule Caddy do
   @impl true
   def init(args) do
     children = [
-      Caddy.Logger,
       {Caddy.Config, args},
+      Caddy.Logger,
       Caddy.Server
       # Caddy.Admin
     ]

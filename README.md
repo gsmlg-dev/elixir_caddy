@@ -1,8 +1,9 @@
 # Caddy
 
 By set `mix.exs` to install
+
 ```elixir
-{:caddy, "~> 1.0"}
+{:caddy, "~> 2.0"}
 ```
 
 ## Start Caddy Server by `Port`
@@ -21,9 +22,6 @@ def start(_type, _args) do
       # Start a Caddy by calling: Caddy.start_link([])
       {Caddy, [
         caddy_bin: "<path to caddy binary>",
-        caddy_file: "<path to caddyfile config>", # caddyfile to load, if not set use config instead
-        config: %{}, # map() parsed json config,
-        merge_saved: false, # Merge saved config, defaults to false
       ]}
     ]
 
@@ -32,4 +30,14 @@ def start(_type, _args) do
     opts = [strategy: :one_for_one, name: PhoenixWeb.Supervisor]
     Supervisor.start_link(children, opts)
   end
+```
+
+Start in extra_applications
+
+```elixir
+def application do
+  [
+    extra_applications: [Caddy.Application]
+  ]
+end
 ```
