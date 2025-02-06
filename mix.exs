@@ -21,6 +21,7 @@ defmodule Caddy.MixProject do
 
   def application do
     [
+      mod: {Caddy.Application, []},
       extra_applications: [:logger]
     ]
   end
