@@ -1,6 +1,6 @@
 # Elixir Caddy
 
-[![release](https://github.com/gsmlg-dev/elixir_caddy/actions/workflows/release.yml/badge.svg)](https://github.com/gsmlg-dev/elixir_caddy/actions/workflows/release.yml)
+[![release](https://github.com/gsmlg-dev/elixir_caddy/actions/workflows/release.yml/badge.svg)](https://github.com/gsmlg-dev/elixir_caddy/actions/workflows/release.yml) [![Hex.pm](https://img.shields.io/hexpm/v/caddy.svg)](https://hex.pm/packages/caddy) [![Documentation](https://img.shields.io/badge/documentation-gray)](https://hexdocs.pm/caddy)
 
 Start `Caddy` reverse proxy server in `Elixir` project.
 
