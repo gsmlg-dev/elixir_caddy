@@ -51,4 +51,8 @@ import Config
 
 # dump caddy server log to stdout
 config :caddy, dump_log: false
+
+# caddy server will not start, this is useful for testing
+config :caddy, start: false
+
 ```

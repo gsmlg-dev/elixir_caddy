@@ -22,25 +22,31 @@ defmodule Caddy.Server do
 
   @impl true
   def init(_) do
-    case bootstrap() do
-      {:ok, _} ->
-        dump_log = Application.get_env(:caddy, :dump_log, false)
-        state = %{port: nil, dump_log: dump_log}
-        Process.flag(:trap_exit, true)
-        {:ok, state, {:continue, :start}}
-
-      {:error, :can_execute} ->
-        Logger.warning("""
-        Caddy binary not found or not executable,
-        You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later,
-        then restart server by `Caddy.restart_server()`
-        """)
-
+    case Application.get_env(:caddy, :start, true) do
+      false ->
         :ignore
 
-      {:error, error} ->
-        Logger.error("Caddy Server init error: #{inspect(error)}")
-        {:stop, error}
+      true ->
+        case bootstrap() do
+          {:ok, _} ->
+            dump_log = Application.get_env(:caddy, :dump_log, false)
+            state = %{port: nil, dump_log: dump_log}
+            Process.flag(:trap_exit, true)
+            {:ok, state, {:continue, :start}}
+
+          {:error, :can_execute} ->
+            Logger.warning("""
+            Caddy binary not found or not executable,
+            You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later,
+            then restart server by `Caddy.restart_server()`
+            """)
+
+            :ignore
+
+          {:error, error} ->
+            Logger.error("Caddy Server init error: #{inspect(error)}")
+            {:stop, error}
+        end
     end
   end
 
