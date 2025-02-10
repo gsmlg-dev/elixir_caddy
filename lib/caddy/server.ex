@@ -20,17 +20,21 @@ defmodule Caddy.Server do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  @impl true
   def init(_) do
     case bootstrap() do
       {:ok, _} ->
-        state = %{port: nil}
+        dump_log = Application.get_env(:caddy, :dump_log, false)
+        state = %{port: nil, dump_log: dump_log}
         Process.flag(:trap_exit, true)
         {:ok, state, {:continue, :start}}
 
       {:error, :can_execute} ->
-        Logger.warning(
-          ~s[Caddy binary not found or not executable. You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later, then restart server by `Caddy.restart_server()`]
-        )
+        Logger.warning("""
+        Caddy binary not found or not executable,
+        You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later,
+        then restart server by `Caddy.restart_server()`
+        """)
 
         :ignore
 
@@ -41,6 +45,7 @@ defmodule Caddy.Server do
   end
 
   @doc false
+  @impl true
   def handle_continue(:start, state) do
     Logger.debug("Caddy Server Starting")
     config = Config.get_config()
@@ -49,8 +54,10 @@ defmodule Caddy.Server do
     {:noreply, state}
   end
 
-  def handle_info({_port, {:data, msg}}, state) do
+  @impl true
+  def handle_info({_port, {:data, msg}}, %{dump_log: dump_log} = state) do
     Caddy.Logger.Buffer.write(msg)
+    if dump_log, do: IO.puts(msg)
     {:noreply, state}
   end
 
@@ -68,6 +75,7 @@ defmodule Caddy.Server do
   end
 
   # handle termination
+  @impl true
   def terminate(reason, state) do
     Logger.debug("Caddy.Server terminating")
     cleanup(reason, state)
@@ -184,6 +192,4 @@ defmodule Caddy.Server do
     end)
     |> Enum.filter(&is_tuple/1)
   end
-
-  defp fixup_env(_), do: []
 end

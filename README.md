@@ -12,6 +12,9 @@ Add this in `deps` in `mix.exs` to install
 {:caddy, "~> 2.0"}
 ```
 
+If caddy bin is set, caddy server will automate start when application start.
+
+
 Start in extra_applications
 
 ```elixir
@@ -39,4 +42,13 @@ This will restart server automatically
 
 ```elixir
 Caddy.Cofnig.set_bin!("/usr/bin/caddy")
+```
+
+## Config
+
+```elixir
+import Config
+
+# dump caddy server log to stdout
+config :caddy, dump_log: false
 ```

@@ -5,6 +5,8 @@ defmodule Caddy do
 
   Start Caddy HTTP Server in supervisor tree
 
+  If caddy bin is set, caddy server will automate start when application start.
+
   - Start in extra_applications
 
   ```elixir
@@ -30,6 +32,15 @@ defmodule Caddy do
 
   ```
   Caddy.Cofnig.set_bin!("/usr/bin/caddy")
+  ```
+
+  ## Config
+
+  ```elixir
+  import Config
+
+  # dump caddy server log to stdout
+  config :caddy, dump_log: false
   ```
 
   """
@@ -77,6 +88,10 @@ defmodule Caddy do
   end
 
   @impl true
+  @spec init(any()) ::
+          {:ok,
+           {Supervisor.sup_flags(),
+            [Supervisor.child_spec() | (old_erlang_child_spec :: :supervisor.child_spec())]}}
   def init(args) do
     children = [
       {Caddy.Config, [args]},

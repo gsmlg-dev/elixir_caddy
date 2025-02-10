@@ -31,18 +31,7 @@ defmodule Caddy.Logger.Buffer do
 
       [log | rest] ->
         Caddy.Logger.Store.write(log)
-        write_to_console(log)
         rest |> Enum.join("\n") |> update_buffer()
-    end
-  end
-
-  defp write_to_console(log) do
-    case Application.get_env(:caddy, Caddy.Logger.Buffer, :write_console) do
-      true ->
-        IO.puts(log)
-
-      _ ->
-        nil
     end
   end
 end
