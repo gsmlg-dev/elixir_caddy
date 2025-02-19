@@ -5,7 +5,7 @@ on:
       release-version:
         required: true
         description: 'The version of the release'
-        default: '1.0.0'
+        default: '2.0.0'
       git-ref:
         required: true
         description: 'The git revison of repo, branch, tag or commit'

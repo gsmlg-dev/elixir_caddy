@@ -133,6 +133,10 @@ defmodule Caddy.Config do
     GenServer.call(__MODULE__, {:set_global, global})
   end
 
+  def set_additional(additionals)do
+    GenServer.call(__MODULE__, {:set_additional, additionals})
+  end
+
   @doc """
   Set the site configuration
 
@@ -203,6 +207,10 @@ defmodule Caddy.Config do
 
   def handle_call({:set_global, global}, _from, state) do
     {:reply, {:ok, global}, state |> Map.put(:global, global)}
+  end
+
+  def handle_call({:set_additional, additionals}, _from, state) do
+    {:reply, {:ok, additionals}, state |> Map.put(:additional, additionals)}
   end
 
   def handle_call({:set_site, name, site}, _from, state) do
