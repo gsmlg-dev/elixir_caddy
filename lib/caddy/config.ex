@@ -18,7 +18,7 @@ defmodule Caddy.Config do
   """
   require Logger
 
-  use GenServer
+  use Agent
 
   @type t :: %__MODULE__{
           bin: binary() | nil,
@@ -67,9 +67,9 @@ defmodule Caddy.Config do
   @doc """
   Replace the current configuration in `Caddy.Config`
   """
-  @spec set_config(t()) :: {:ok, t()} | {:error, term()}
+  @spec set_config(t()) :: :ok
   def set_config(%__MODULE__{} = config) do
-    GenServer.call(__MODULE__, {:set_config, config})
+    Agent.update(__MODULE__, fn _ -> config end)
   end
 
   @doc """
@@ -77,7 +77,7 @@ defmodule Caddy.Config do
   """
   @spec get_config() :: t()
   def get_config() do
-    GenServer.call(__MODULE__, :get_config)
+    Agent.get(__MODULE__, & &1)
   end
 
   @doc """
@@ -85,7 +85,7 @@ defmodule Caddy.Config do
   """
   @spec get(atom()) :: binary() | nil
   def get(name) do
-    GenServer.call(__MODULE__, {:get, name})
+    Agent.get(__MODULE__, &Map.get(&1, name))
   end
 
   @doc """
@@ -93,15 +93,27 @@ defmodule Caddy.Config do
   """
   @spec adapt(caddyfile()) :: {:ok, map()} | {:error, term()}
   def adapt(binary) do
-    GenServer.call(__MODULE__, {:adapt, binary})
+    caddy_bin = get(:bin)
+
+    with tmp_config <- Path.expand("Caddyfile", etc_path()),
+         :ok <- File.write(tmp_config, binary),
+         {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
+         {config_json, 0} <-
+           System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
+         {:ok, config} <- Jason.decode(config_json) do
+      {:ok, config}
+    else
+      error ->
+        {:error, error}
+    end
   end
 
   @doc """
   Set the Caddy binary path
   """
-  @spec set_bin(binary()) :: {:ok, binary()} | {:error, term()}
+  @spec set_bin(binary()) :: :ok
   def set_bin(caddy_bin) do
-    GenServer.call(__MODULE__, {:set_bin, caddy_bin})
+    Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
   end
 
   @doc """
@@ -109,7 +121,7 @@ defmodule Caddy.Config do
   """
   @spec set_bin!(binary()) :: :ok | {:error, term()}
   def set_bin!(caddy_bin) do
-    {:ok, _} = GenServer.call(__MODULE__, {:set_bin, caddy_bin})
+    Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
 
     case Caddy.restart_server() do
       {:ok, _, _} -> :ok
@@ -128,13 +140,13 @@ defmodule Caddy.Config do
   \"\"\")
   ```
   """
-  @spec set_global(caddyfile()) :: {:ok, caddyfile()} | {:error, term()}
+  @spec set_global(caddyfile()) :: :ok
   def set_global(global) do
-    GenServer.call(__MODULE__, {:set_global, global})
+    Agent.update(__MODULE__, &Map.put(&1, :global, global))
   end
 
-  def set_additional(additionals)do
-    GenServer.call(__MODULE__, {:set_additional, additionals})
+  def set_additional(additionals) do
+    Agent.update(__MODULE__, &Map.put(&1, :additional, additionals))
   end
 
   @doc """
@@ -156,20 +168,18 @@ defmodule Caddy.Config do
   \"\"\"})
   ```
   """
-  @spec set_site(site_name(), site_config()) ::
-          {:ok, site_name(), site_config()} | {:error, term()}
+  @spec set_site(site_name(), site_config()) :: :ok
   def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
 
   def set_site(name, site) do
-    GenServer.call(__MODULE__, {:set_site, name, site})
+    Agent.update(__MODULE__, &Map.update(&1, :sites, %{}, fn sites -> Map.put(sites, name, site) end))
   end
 
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+    Agent.start_link(fn -> init(args) end, name: __MODULE__)
   end
 
-  @impl true
-  @spec init(keyword()) :: {:ok, %__MODULE__{}}
+  @spec init(keyword()) :: %__MODULE__{}
   def init(args) do
     bin =
       with true <- Keyword.keyword?(args),
@@ -179,67 +189,13 @@ defmodule Caddy.Config do
         _ -> nil
       end
 
-    confg = %__MODULE__{
+    %__MODULE__{
       env: init_env(),
       bin: bin,
       global: "admin unix/#{socket_file()}"
     }
-
-    {:ok, confg}
   end
 
-  @impl true
-  def handle_call(:get_config, _from, state) do
-    {:reply, state, state}
-  end
-
-  @impl true
-  def handle_call({:get, key}, _from, state) do
-    value = Map.get(state, key)
-    {:reply, value, state}
-  end
-
-  @impl true
-  def handle_call({:set_config, config}, _from, state) do
-    {:reply, {:ok, state}, config}
-  end
-
-  @impl true
-  def handle_call({:set_bin, caddy_bin}, _from, state) do
-    state = state |> Map.put(:bin, caddy_bin)
-    {:reply, {:ok, caddy_bin}, state}
-  end
-
-  @impl true
-  def handle_call({:set_global, global}, _from, state) do
-    {:reply, {:ok, global}, state |> Map.put(:global, global)}
-  end
-
-  @impl true
-  def handle_call({:set_additional, additionals}, _from, state) do
-    {:reply, {:ok, additionals}, state |> Map.put(:additional, additionals)}
-  end
-
-  @impl true
-  def handle_call({:set_site, name, site}, _from, state) do
-    state = state |> Map.update(:sites, %{}, fn sites -> Map.put(sites, name, site) end)
-    {:reply, {:ok, name, site}, state}
-  end
-
-  @impl true
-  def handle_call({:adapt, binary}, _from, %__MODULE__{bin: caddy_bin} = state) do
-    with tmp_config <- Path.expand("Caddyfile", etc_path()),
-         :ok <- File.write(tmp_config, binary),
-         {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
-         {config_json, 0} <-
-           System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
-         {:ok, config} <- Jason.decode(config_json) do
-      {:reply, {:ok, config}, state}
-    else
-      error ->
-        {:reply, {:error, error}, state}
-    end
-  end
 
   def saved() do
     with file <- saved_json_file(),
