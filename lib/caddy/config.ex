@@ -168,6 +168,7 @@ defmodule Caddy.Config do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
+  @impl true
   @spec init(keyword()) :: {:ok, %__MODULE__{}}
   def init(args) do
     bin =
@@ -187,37 +188,45 @@ defmodule Caddy.Config do
     {:ok, confg}
   end
 
+  @impl true
   def handle_call(:get_config, _from, state) do
     {:reply, state, state}
   end
 
+  @impl true
   def handle_call({:get, key}, _from, state) do
     value = Map.get(state, key)
     {:reply, value, state}
   end
 
+  @impl true
   def handle_call({:set_config, config}, _from, state) do
     {:reply, {:ok, state}, config}
   end
 
+  @impl true
   def handle_call({:set_bin, caddy_bin}, _from, state) do
     state = state |> Map.put(:bin, caddy_bin)
     {:reply, {:ok, caddy_bin}, state}
   end
 
+  @impl true
   def handle_call({:set_global, global}, _from, state) do
     {:reply, {:ok, global}, state |> Map.put(:global, global)}
   end
 
+  @impl true
   def handle_call({:set_additional, additionals}, _from, state) do
     {:reply, {:ok, additionals}, state |> Map.put(:additional, additionals)}
   end
 
+  @impl true
   def handle_call({:set_site, name, site}, _from, state) do
     state = state |> Map.update(:sites, %{}, fn sites -> Map.put(sites, name, site) end)
     {:reply, {:ok, name, site}, state}
   end
 
+  @impl true
   def handle_call({:adapt, binary}, _from, %__MODULE__{bin: caddy_bin} = state) do
     with tmp_config <- Path.expand("Caddyfile", etc_path()),
          :ok <- File.write(tmp_config, binary),
