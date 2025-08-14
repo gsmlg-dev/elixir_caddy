@@ -20,16 +20,23 @@ defmodule Caddy.MixProject do
   end
 
   def application do
-    [
-      mod: {Caddy.Application, []},
-      extra_applications: [:logger]
-    ]
+    if Mix.env() == :test do
+      [
+        extra_applications: [:logger]
+      ]
+    else
+      [
+        mod: {Caddy.Application, []},
+        extra_applications: [:logger]
+      ]
+    end
   end
 
   defp deps do
     [
       {:jason, "~> 1.4"},
-      {:ex_doc, ">= 0.0.0", only: :docs, runtime: false}
+      {:ex_doc, ">= 0.0.0", only: :docs, runtime: false},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 

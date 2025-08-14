@@ -1,8 +1,8 @@
 defmodule Caddy.Admin.Request do
   @moduledoc false
+  @behaviour Caddy.Admin.RequestBehaviour
 
   alias Caddy.Admin.Request
-  alias Caddy.Config
   require Logger
 
   @type t :: %__MODULE__{
@@ -16,6 +16,7 @@ defmodule Caddy.Admin.Request do
   @doc """
   Send HTTP GET method to admin socket
   """
+  @impl true
   def get(path) do
     unix_path = get_admin_sock()
 
@@ -34,6 +35,7 @@ defmodule Caddy.Admin.Request do
   @doc """
   Send HTTP POST method to admin socket
   """
+  @impl true
   def post(path, data, content_type \\ "application/json") do
     unix_path = get_admin_sock()
 
@@ -54,6 +56,7 @@ defmodule Caddy.Admin.Request do
   @doc """
   Send HTTP PATCH method to admin socket
   """
+  @impl true
   def patch(path, data, content_type \\ "application/json") do
     unix_path = get_admin_sock()
 
@@ -74,6 +77,7 @@ defmodule Caddy.Admin.Request do
   @doc """
   Send HTTP PUT method to admin socket
   """
+  @impl true
   @spec put(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def put(path, data, content_type \\ "application/json") do
@@ -96,6 +100,7 @@ defmodule Caddy.Admin.Request do
   @doc """
   Send HTTP DELETE method to admin socket
   """
+  @impl true
   @spec delete(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def delete(path, data \\ "", content_type \\ "application/json") do
@@ -116,13 +121,13 @@ defmodule Caddy.Admin.Request do
   end
 
   defp get_admin_sock() do
-    Config.get(:config)
+    Application.get_env(:caddy, :config)
     |> get_in(["admin", "listen"])
     |> String.replace(~r/^unix\//, "")
   end
 
   defp gen_raw_header(method, path, content_type \\ nil) do
-    host = Config.get(:config) |> get_in(["admin", "origins"]) |> Enum.at(0, "caddy-admin.local")
+    host = Application.get_env(:caddy, :config) |> get_in(["admin", "origins"]) |> Enum.at(0, "caddy-admin.local")
 
     """
     #{String.upcase(method)} #{path} HTTP/1.1

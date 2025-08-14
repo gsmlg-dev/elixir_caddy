@@ -2,7 +2,7 @@ defmodule Caddy.Admin.Api do
   @moduledoc false
   require Logger
 
-  alias Caddy.Admin.Request
+  defp request_module, do: Application.get_env(:caddy, :request_module, Caddy.Admin.Request)
 
   @doc """
   ## Admin API
@@ -29,7 +29,7 @@ defmodule Caddy.Admin.Api do
   Get info from caddy server
   """
   def get(path) do
-    {:ok, resp, body} = Request.get("#{path}")
+    {:ok, resp, body} = request_module().get("#{path}")
     resp |> Map.put(:body, body)
   end
 
@@ -47,7 +47,7 @@ defmodule Caddy.Admin.Api do
   end
 
   def load(conf) when is_binary(conf) do
-    {:ok, resp, body} = Request.post("/load", conf)
+    {:ok, resp, body} = request_module().post("/load", conf, "application/json")
     resp |> Map.put(:body, body)
   end
 
@@ -55,7 +55,7 @@ defmodule Caddy.Admin.Api do
   Stops the active configuration and exits the process
   """
   def stop() do
-    {:ok, resp, body} = Request.post("/stop", "")
+    {:ok, resp, body} = request_module().post("/stop", "", "application/json")
     resp |> Map.put(:body, body)
   end
 
@@ -63,12 +63,12 @@ defmodule Caddy.Admin.Api do
   Exports the config at the named path
   """
   def get_config(path) when is_binary(path) do
-    {:ok, _resp, body} = Request.get("/config/#{path}")
+    {:ok, _resp, body} = request_module().get("/config/#{path}")
     body
   end
 
   def get_config() do
-    {:ok, _resp, body} = Request.get("/config/")
+    {:ok, _resp, body} = request_module().get("/config/")
     body
   end
 
@@ -77,14 +77,14 @@ defmodule Caddy.Admin.Api do
   """
   def post_config(path, data) when is_binary(path) do
     data_string = Jason.encode!(data)
-    {:ok, resp, body} = Request.post("/config/#{path}", data_string)
+    {:ok, resp, body} = request_module().post("/config/#{path}", data_string, "application/json")
     Logger.debug(inspect(resp))
     body
   end
 
   def post_config(data) do
     data_string = Jason.encode!(data)
-    {:ok, resp, body} = Request.post("/config/", data_string)
+    {:ok, resp, body} = request_module().post("/config/", data_string)
     Logger.debug(inspect(resp))
     body
   end
@@ -94,14 +94,14 @@ defmodule Caddy.Admin.Api do
   """
   def put_config(path, data) when is_binary(path) do
     data_string = Jason.encode!(data)
-    {:ok, resp, body} = Request.put("/config/#{path}", data_string)
+    {:ok, resp, body} = request_module().put("/config/#{path}", data_string, "application/json")
     Logger.debug(inspect(resp))
     body
   end
 
   def put_config(data) do
     data_string = Jason.encode!(data)
-    {:ok, resp, body} = Request.put("/config/", data_string)
+    {:ok, resp, body} = request_module().put("/config/", data_string)
     Logger.debug(inspect(resp))
     body
   end
@@ -111,14 +111,14 @@ defmodule Caddy.Admin.Api do
   """
   def patch_config(path, data) when is_binary(path) do
     data_string = Jason.encode!(data)
-    {:ok, resp, body} = Request.patch("/config/#{path}", data_string)
+    {:ok, resp, body} = request_module().patch("/config/#{path}", data_string, "application/json")
     Logger.debug(inspect(resp))
     body
   end
 
   def patch_config(data) do
     data_string = Jason.encode!(data)
-    {:ok, resp, body} = Request.patch("/config/", data_string)
+    {:ok, resp, body} = request_module().patch("/config/", data_string)
     Logger.debug(inspect(resp))
     body
   end
@@ -127,13 +127,13 @@ defmodule Caddy.Admin.Api do
   Delete the config at the named path
   """
   def delete_config(path) when is_binary(path) do
-    {:ok, resp, body} = Request.delete("/config/#{path}")
+    {:ok, resp, body} = request_module().delete("/config/#{path}", "", "application/json")
     Logger.debug(inspect(resp))
     body
   end
 
   def delete_config() do
-    {:ok, resp, body} = Request.delete("/config/")
+    {:ok, resp, body} = request_module().delete("/config/")
     Logger.debug(inspect(resp))
     body
   end
@@ -143,7 +143,7 @@ defmodule Caddy.Admin.Api do
   """
   @spec adapt(binary) :: map()
   def adapt(conf) do
-    {:ok, resp, json_conf} = Request.post("/adapt", conf)
+    {:ok, resp, json_conf} = request_module().post("/adapt", conf, "application/json")
     Logger.debug(inspect(resp))
     json_conf
   end
