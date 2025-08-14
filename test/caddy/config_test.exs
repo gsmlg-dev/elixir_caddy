@@ -1,6 +1,5 @@
 defmodule Caddy.ConfigTest do
   use ExUnit.Case
-  import Mox
   alias Caddy.Config
 
   test "test caddy conifg paths" do
