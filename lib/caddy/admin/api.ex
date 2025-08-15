@@ -147,4 +147,38 @@ defmodule Caddy.Admin.Api do
     Logger.debug(inspect(resp))
     json_conf
   end
+
+  @doc """
+  Check server health status
+  """
+  @spec health_check() :: {:ok, map()} | {:error, binary()}
+  def health_check() do
+    case request_module().get("/config/") do
+      {:ok, %{status: 200}, body} ->
+        {:ok, %{status: :healthy, config_loaded: body != %{}}}
+
+      {:ok, %{status: status}, _} ->
+        {:error, "Server returned status #{status}"}
+
+      {:error, reason} ->
+        {:error, "Connection failed: #{inspect(reason)}"}
+    end
+  end
+
+  @doc """
+  Get detailed server info including version and uptime
+  """
+  @spec server_info() :: {:ok, map()} | {:error, binary()}
+  def server_info() do
+    case request_module().get("/") do
+      {:ok, %{status: 200}, body} ->
+        {:ok, body}
+
+      {:ok, %{status: status}, _} ->
+        {:error, "Server returned status #{status}"}
+
+      {:error, reason} ->
+        {:error, "Connection failed: #{inspect(reason)}"}
+    end
+  end
 end

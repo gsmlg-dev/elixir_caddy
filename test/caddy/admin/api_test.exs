@@ -128,4 +128,36 @@ defmodule Caddy.Admin.ApiTest do
 
     assert %{"adapted" => true} == Api.adapt(config)
   end
+
+  test "health_check/0 returns healthy status" do
+    expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
+      {:ok, %Request{status: 200}, %{"apps" => %{"http" => %{}}}}
+    end)
+
+    assert {:ok, %{status: :healthy, config_loaded: true}} == Api.health_check()
+  end
+
+  test "health_check/0 returns error for connection failure" do
+    expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
+      {:error, :econnrefused}
+    end)
+
+    assert {:error, "Connection failed: :econnrefused"} == Api.health_check()
+  end
+
+  test "server_info/0 returns server details" do
+    expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
+      {:ok, %Request{status: 200}, %{"version" => "2.7.6"}}
+    end)
+
+    assert {:ok, %{"version" => "2.7.6"}} == Api.server_info()
+  end
+
+  test "server_info/0 handles connection errors" do
+    expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
+      {:error, :timeout}
+    end)
+
+    assert {:error, "Connection failed: :timeout"} == Api.server_info()
+  end
 end

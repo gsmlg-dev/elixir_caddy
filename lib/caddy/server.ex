@@ -34,18 +34,17 @@ defmodule Caddy.Server do
             Process.flag(:trap_exit, true)
             {:ok, state, {:continue, :start}}
 
-          {:error, :can_execute} ->
+          {:error, reason} ->
             Logger.warning("""
-            Caddy binary not found or not executable,
-            You can set binary by `Caddy.Config.set_bin("path/to/caddy")` later,
-            then restart server by `Caddy.restart_server()`
+            Caddy Server initialization failed: #{reason}
+
+            To fix this issue:
+            - If binary not found: `Caddy.Config.set_bin("/path/to/caddy")`
+            - Then restart: `Caddy.restart_server()`
+            - Check configuration for syntax errors
             """)
 
             :ignore
-
-          {:error, error} ->
-            Logger.error("Caddy Server init error: #{inspect(error)}")
-            {:stop, error}
         end
     end
   end
@@ -102,17 +101,52 @@ defmodule Caddy.Server do
     with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
          {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
          {:get_config, config} <- {:get_config, Config.get_config()},
-         {:can_execute, true} <- {:can_execute, Config.can_execute?(config.bin)},
+         {:validate_bin, :ok} <- {:validate_bin, validate_binary(config.bin)},
+         {:validate_config, :ok} <- {:validate_config, validate_configuration(config)},
          {:ok, config_path} <- init_config_file(config) do
       {:ok, config_path}
     else
-      {:can_execute, _} ->
-        {:error, :can_execute}
+      {:ensure_path_exists, false} ->
+        {:error, "Failed to create required directories"}
+
+      {:cleanup_pidfile, _} ->
+        {:error, "Failed to cleanup pidfile"}
+
+      {:validate_bin, {:error, reason}} ->
+        {:error, reason}
+
+      {:validate_config, {:error, reason}} ->
+        {:error, reason}
+
+      {:init_config_file, error} ->
+        {:error, "Configuration file error: #{inspect(error)}"}
 
       error ->
         Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
         {:error, error}
     end
+  end
+
+  defp validate_binary(nil) do
+    {:error, "Caddy binary path not configured"}
+  end
+
+  defp validate_binary(bin) do
+    case Config.validate_bin(bin) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp validate_configuration(config) do
+    caddyfile = Config.to_caddyfile(config)
+
+    case Config.adapt(caddyfile) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, "Invalid configuration: #{inspect(reason)}"}
+    end
+  rescue
+    error -> {:error, "Configuration validation failed: #{inspect(error)}"}
   end
 
   defp init_config_file(%Config{} = config) do

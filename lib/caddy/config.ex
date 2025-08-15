@@ -111,9 +111,15 @@ defmodule Caddy.Config do
   @doc """
   Set the Caddy binary path
   """
-  @spec set_bin(binary()) :: :ok
+  @spec set_bin(binary()) :: :ok | {:error, binary()}
   def set_bin(caddy_bin) do
-    Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
+    case validate_bin(caddy_bin) do
+      :ok ->
+        Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -168,11 +174,20 @@ defmodule Caddy.Config do
   \"\"\"})
   ```
   """
-  @spec set_site(site_name(), site_config()) :: :ok
+  @spec set_site(site_name(), site_config()) :: :ok | {:error, binary()}
   def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
 
-  def set_site(name, site) do
-    Agent.update(__MODULE__, &Map.update(&1, :sites, %{}, fn sites -> Map.put(sites, name, site) end))
+  def set_site(name, site) when is_binary(name) do
+    case validate_site_config(site) do
+      :ok ->
+        Agent.update(
+          __MODULE__,
+          &Map.update(&1, :sites, %{}, fn sites -> Map.put(sites, name, site) end)
+        )
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   def start_link(args) do
@@ -195,7 +210,6 @@ defmodule Caddy.Config do
       global: "admin unix/#{socket_file()}"
     }
   end
-
 
   def saved() do
     with file <- saved_json_file(),
@@ -302,6 +316,65 @@ defmodule Caddy.Config do
   end
 
   def can_execute?(_), do: false
+
+  @doc """
+  Validate Caddy binary path
+  """
+  @spec validate_bin(binary()) :: :ok | {:error, binary()}
+  def validate_bin(caddy_bin) when is_binary(caddy_bin) do
+    cond do
+      not File.exists?(caddy_bin) ->
+        {:error, "Caddy binary not found at path: #{caddy_bin}"}
+
+      not can_execute?(caddy_bin) ->
+        {:error, "Caddy binary not executable: #{caddy_bin}"}
+
+      true ->
+        case check_bin(caddy_bin) do
+          :ok -> :ok
+          {:error, _} -> {:error, "Invalid Caddy binary or version incompatibility"}
+          _ -> {:error, "Failed to validate Caddy binary"}
+        end
+    end
+  rescue
+    _ -> {:error, "Caddy binary validation failed"}
+  end
+
+  def validate_bin(_) do
+    {:error, "binary path must be a string"}
+  end
+
+  @doc """
+  Validate site configuration format
+  """
+  @spec validate_site_config(site_config()) :: :ok | {:error, binary()}
+  def validate_site_config(site) when is_binary(site) do
+    if String.trim(site) == "" do
+      {:error, "site configuration cannot be empty"}
+    else
+      :ok
+    end
+  end
+
+  def validate_site_config({listen, site}) when is_binary(listen) and is_binary(site) do
+    cond do
+      String.trim(listen) == "" ->
+        {:error, "listen address cannot be empty"}
+
+      String.trim(site) == "" ->
+        {:error, "site configuration cannot be empty"}
+
+      not String.contains?(listen, ":") ->
+        {:error, "listen address must contain port (e.g., ':8080')"}
+
+      true ->
+        :ok
+    end
+  end
+
+  def validate_site_config(_) do
+    {:error, "invalid site configuration format"}
+  end
 
   defp init_env() do
     [

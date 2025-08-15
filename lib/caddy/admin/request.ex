@@ -127,7 +127,10 @@ defmodule Caddy.Admin.Request do
   end
 
   defp gen_raw_header(method, path, content_type \\ nil) do
-    host = Application.get_env(:caddy, :config) |> get_in(["admin", "origins"]) |> Enum.at(0, "caddy-admin.local")
+    host =
+      Application.get_env(:caddy, :config)
+      |> get_in(["admin", "origins"])
+      |> Enum.at(0, "caddy-admin.local")
 
     """
     #{String.upcase(method)} #{path} HTTP/1.1
