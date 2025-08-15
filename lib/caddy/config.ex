@@ -33,6 +33,7 @@ defmodule Caddy.Config do
   @type site_listen :: binary()
   @type site_config :: caddyfile() | {site_listen(), caddyfile()}
 
+  @derive {Jason.Encoder, only: [:bin, :global, :additional, :sites, :env]}
   defstruct bin: nil, global: "", additional: [], sites: %{}, env: []
 
   defdelegate user_home, to: System
@@ -58,18 +59,28 @@ defmodule Caddy.Config do
   @doc false
   def ensure_path_exists() do
     paths()
-    |> Enum.filter(&(!File.exists?(&1)))
-    |> Enum.each(&File.mkdir_p/1)
-
-    paths() |> Enum.filter(&File.exists?(&1)) |> Kernel.==(paths())
+    |> Enum.reduce_while(true, fn path, _acc ->
+      case File.mkdir_p(path) do
+        :ok -> {:cont, true}
+        {:error, reason} -> 
+          Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
+          {:halt, false}
+      end
+    end)
   end
 
   @doc """
   Replace the current configuration in `Caddy.Config`
   """
-  @spec set_config(t()) :: :ok
+  @spec set_config(t()) :: :ok | {:error, term()}
   def set_config(%__MODULE__{} = config) do
-    Agent.update(__MODULE__, fn _ -> config end)
+    case validate_config(config) do
+      :ok ->
+        Agent.update(__MODULE__, fn _ -> config end)
+        :ok
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -94,17 +105,65 @@ defmodule Caddy.Config do
   @spec adapt(caddyfile()) :: {:ok, map()} | {:error, term()}
   def adapt(binary) do
     caddy_bin = get(:bin)
+    
+    cond do
+      is_nil(caddy_bin) ->
+        {:error, "Caddy binary path not configured"}
+        
+      String.trim(binary) == "" ->
+        {:error, "Caddyfile content cannot be empty"}
+        
+      not File.exists?(caddy_bin) ->
+        {:error, "Caddy binary not found: #{caddy_bin}"}
+        
+      true ->
+        tmp_config = Path.expand("Caddyfile", tmp_path())
+        
+        try do
+          with :ok <- ensure_dir_exists(tmp_config),
+               :ok <- File.write(tmp_config, binary),
+               {_fmt_output, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
+               {config_json, 0} <-
+                 System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
+               {:ok, config} <- Jason.decode(config_json),
+               :ok <- validate_adapted_config(config) do
+            {:ok, config}
+          else
+            {error_output, non_zero} when is_integer(non_zero) and non_zero != 0 ->
+              Logger.error("Caddy command failed with exit code #{non_zero}: #{error_output}")
+              {:error, {:caddy_error, non_zero, error_output}}
+            error ->
+              Logger.error("Caddy adaptation failed: #{inspect(error)}")
+              error
+          end
+        rescue
+          e in File.Error ->
+            Logger.error("File operation error: #{inspect(e)}")
+            {:error, {:file_error, e}}
+          e in Jason.DecodeError ->
+            Logger.error("JSON decode error: #{inspect(e)}")
+            {:error, {:json_error, e}}
+        after
+          # Always clean up temporary file
+          if File.exists?(tmp_config), do: File.rm(tmp_config)
+        end
+    end
+  end
 
-    with tmp_config <- Path.expand("Caddyfile", etc_path()),
-         :ok <- File.write(tmp_config, binary),
-         {_, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
-         {config_json, 0} <-
-           System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
-         {:ok, config} <- Jason.decode(config_json) do
-      {:ok, config}
+
+  defp ensure_dir_exists(file_path) do
+    dir_path = Path.dirname(file_path)
+    case File.mkdir_p(dir_path) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:mkdir_error, reason}}
+    end
+  end
+
+  defp validate_adapted_config(config) when is_map(config) do
+    if Map.has_key?(config, "apps") or Map.has_key?(config, "admin") do
+      :ok
     else
-      error ->
-        {:error, error}
+      {:error, "Invalid Caddy configuration structure"}
     end
   end
 
@@ -197,27 +256,130 @@ defmodule Caddy.Config do
   @spec init(keyword()) :: %__MODULE__{}
   def init(args) do
     bin =
-      with true <- Keyword.keyword?(args),
-           true <- Keyword.has_key?(args, :caddy_bin) do
-        Keyword.get(args, :caddy_bin)
-      else
-        _ -> nil
+      cond do
+        Keyword.keyword?(args) and Keyword.has_key?(args, :caddy_bin) ->
+          Keyword.get(args, :caddy_bin)
+        
+        :os.type() == {:unix, :linux} ->
+          "/usr/bin/caddy"
+        
+        :os.type() == {:unix, :darwin} ->
+          "/opt/homebrew/bin/caddy"
+        
+        true ->
+          System.find_executable("caddy")
       end
 
-    %__MODULE__{
-      env: init_env(),
-      bin: bin,
-      global: "admin unix/#{socket_file()}"
-    }
+    # Ensure directories exist on startup
+    ensure_path_exists()
+    
+    # Load saved configuration if available
+    config = 
+      case saved() do
+        %{} = saved_config when map_size(saved_config) > 0 ->
+          struct(__MODULE__, saved_config)
+        _ ->
+          %__MODULE__{
+            env: init_env(),
+            bin: bin,
+            global: "admin unix/#{socket_file()}"
+          }
+      end
+    
+    # Validate and return
+    case validate_config(config) do
+      :ok -> config
+      {:error, reason} ->
+        Logger.warning("Invalid saved configuration: #{reason}, using defaults")
+        %__MODULE__{
+          env: init_env(),
+          bin: bin,
+          global: "admin unix/#{socket_file()}"
+        }
+    end
   end
 
+  @doc """
+  Load saved configuration from JSON file
+  """
+  @spec saved() :: map()
   def saved() do
-    with file <- saved_json_file(),
-         true <- File.exists?(file),
-         {:ok, saved_config_string} <- File.read(file),
+    load_saved_config(saved_json_file())
+  end
+
+  @doc """
+  Backup current configuration to JSON file
+  """
+  @spec backup_config() :: :ok | {:error, term()}
+  def backup_config() do
+    config = get_config()
+    backup_file = backup_json_file()
+    
+    with :ok <- ensure_dir_exists(backup_file),
+         {:ok, json} <- Jason.encode(config, pretty: true),
+         :ok <- File.write(backup_file, json) do
+      Logger.debug("Configuration backed up to #{backup_file}")
+      :ok
+    else
+      error ->
+        Logger.error("Failed to backup configuration: #{inspect(error)}")
+        error
+    end
+  end
+
+  @doc """
+  Restore configuration from backup
+  """
+  @spec restore_config() :: {:ok, t()} | {:error, term()}
+  def restore_config() do
+    backup_file = backup_json_file()
+    
+    case load_saved_config(backup_file) do
+      %{} = config_map ->
+        config = struct(__MODULE__, config_map)
+        set_config(config)
+        {:ok, config}
+      error ->
+        Logger.error("Failed to restore configuration from #{backup_file}")
+        error
+    end
+  end
+
+  @doc """
+  Save current configuration to JSON file
+  """
+  @spec save_config() :: :ok | {:error, term()}
+  def save_config() do
+    config = get_config()
+    
+    with :ok <- ensure_dir_exists(saved_json_file()),
+         {:ok, json} <- Jason.encode(config, pretty: true),
+         :ok <- File.write(saved_json_file(), json) do
+      Logger.debug("Configuration saved to #{saved_json_file()}")
+      :ok
+    else
+      error ->
+        Logger.error("Failed to save configuration: #{inspect(error)}")
+        error
+    end
+  end
+
+  @doc """
+  Get backup configuration file path
+  """
+  @spec backup_json_file() :: Path.t()
+  def backup_json_file(), do: Path.join(xdg_config_home(), "caddy/backup.json")
+
+  defp load_saved_config(file_path) do
+    with true <- File.exists?(file_path),
+         {:ok, saved_config_string} <- File.read(file_path),
          {:ok, saved_config} <- Jason.decode(saved_config_string) do
       saved_config
     else
+      false -> %{}
+      {:error, reason} ->
+        Logger.warning("Failed to read saved configuration: #{inspect(reason)}")
+        %{}
       _ ->
         %{}
     end
@@ -374,6 +536,26 @@ defmodule Caddy.Config do
 
   def validate_site_config(_) do
     {:error, "invalid site configuration format"}
+  end
+
+  @doc """
+  Validate complete configuration structure
+  """
+  @spec validate_config(t()) :: :ok | {:error, binary()}
+  def validate_config(%__MODULE__{} = config) do
+    cond do
+      not is_binary(config.global) or not is_list(config.additional) or not is_map(config.sites) or not is_list(config.env) ->
+        {:error, "invalid configuration structure"}
+      
+      not (is_binary(config.bin) or is_nil(config.bin)) ->
+        {:error, "binary path must be a string or nil"}
+      
+      not Enum.all?(config.sites, fn {_name, site_config} -> validate_site_config(site_config) == :ok end) ->
+        {:error, "invalid site configuration in sites"}
+      
+      true ->
+        :ok
+    end
   end
 
   defp init_env() do
