@@ -64,7 +64,7 @@ defmodule Caddy.Server do
 
   @impl true
   def handle_info({_port, {:data, msg}}, %{dump_log: dump_log} = state) do
-    Caddy.Logger.Buffer.write(msg)
+    Caddy.Logger.write_buffer(msg)
     if dump_log, do: IO.puts(msg)
     {:noreply, state}
   end

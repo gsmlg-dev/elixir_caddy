@@ -18,6 +18,9 @@ defmodule Caddy.Logger do
     GenServer.cast(Caddy.Logger.Store, {:write, log})
   end
 
+  @doc false
+  defdelegate write_buffer(msg), to: Caddy.Logger.Buffer, as: :write
+
   @doc """
   Get latest `num` logs
   """
