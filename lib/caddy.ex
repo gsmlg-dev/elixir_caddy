@@ -112,4 +112,9 @@ defmodule Caddy do
 
   defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
+  defdelegate set_global(global), to: Caddy.ConfigProvider
+  defdelegate set_additional(additionals), to: Caddy.ConfigProvider
+  defdelegate set_site(name, site), to: Caddy.ConfigProvider
+  defdelegate backup_config(), to: Caddy.ConfigProvider
+  defdelegate restore_config(), to: Caddy.ConfigProvider
 end

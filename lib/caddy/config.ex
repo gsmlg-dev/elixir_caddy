@@ -439,4 +439,10 @@ defmodule Caddy.Config do
   defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
   @deprecated "user Caddy.set_bin/1 instead"
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
+  @deprecated "user Caddy.set_global/1 instead"
+  defdelegate set_global(global), to: Caddy.ConfigProvider
+  @deprecated "user Caddy.set_additional/1 instead"
+  defdelegate set_additional(additionals), to: Caddy.ConfigProvider
+  @deprecated "user Caddy.set_site/2 instead"
+  defdelegate set_site(name, site), to: Caddy.ConfigProvider
 end
