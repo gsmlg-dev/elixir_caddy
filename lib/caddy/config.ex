@@ -25,20 +25,69 @@ defmodule Caddy.Config do
 
   # Path utilities
   defdelegate user_home, to: System
-  def user_share(), do: Path.join(user_home(), ".local/share")
-  def priv_path(), do: Application.app_dir(:caddy, "priv")
-  def share_path(), do: Path.join(user_share(), "caddy")
-  def etc_path(), do: Path.join(share_path(), "etc")
-  def run_path(), do: Path.join(share_path(), "run")
-  def tmp_path(), do: Path.join(share_path(), "tmp")
-  def xdg_config_home(), do: Path.join(share_path(), "config")
-  def xdg_data_home(), do: Path.join(share_path(), "data")
+  
+  @doc "Get configurable base path for caddy files"
+  def base_path() do
+    Application.get_env(:caddy, :base_path, Path.join(user_home(), ".local/share/caddy"))
+  end
 
-  def env_file(), do: Path.join(etc_path(), "envfile")
-  def init_file(), do: Path.join(etc_path(), "init.json")
-  def pid_file(), do: Path.join(run_path(), "caddy.pid")
-  def socket_file(), do: Path.join(run_path(), "caddy.sock")
-  def saved_json_file(), do: Path.join(xdg_config_home(), "caddy/autosave.json")
+  @doc "Get configurable priv path"
+  def priv_path() do
+    Application.get_env(:caddy, :priv_path, Application.app_dir(:caddy, "priv"))
+  end
+
+  @doc "Get share path (base path)"
+  def share_path(), do: base_path()
+
+  @doc "Get etc path for configuration files"
+  def etc_path() do
+    Application.get_env(:caddy, :etc_path, Path.join(base_path(), "etc"))
+  end
+
+  @doc "Get run path for runtime files"
+  def run_path() do
+    Application.get_env(:caddy, :run_path, Path.join(base_path(), "run"))
+  end
+
+  @doc "Get tmp path for temporary files"
+  def tmp_path() do
+    Application.get_env(:caddy, :tmp_path, Path.join(base_path(), "tmp"))
+  end
+
+  @doc "Get XDG config home path"
+  def xdg_config_home() do
+    Application.get_env(:caddy, :xdg_config_home, Path.join(base_path(), "config"))
+  end
+
+  @doc "Get XDG data home path"
+  def xdg_data_home() do
+    Application.get_env(:caddy, :xdg_data_home, Path.join(base_path(), "data"))
+  end
+
+  @doc "Get environment file path"
+  def env_file() do
+    Application.get_env(:caddy, :env_file, Path.join(etc_path(), "envfile"))
+  end
+
+  @doc "Get init configuration file path"
+  def init_file() do
+    Application.get_env(:caddy, :init_file, Path.join(etc_path(), "init.json"))
+  end
+
+  @doc "Get PID file path"
+  def pid_file() do
+    Application.get_env(:caddy, :pid_file, Path.join(run_path(), "caddy.pid"))
+  end
+
+  @doc "Get socket file path"
+  def socket_file() do
+    Application.get_env(:caddy, :socket_file, Path.join(run_path(), "caddy.sock"))
+  end
+
+  @doc "Get saved JSON configuration file path"
+  def saved_json_file() do
+    Application.get_env(:caddy, :saved_json_file, Path.join(xdg_config_home(), "caddy/autosave.json"))
+  end
 
   @doc false
   def paths(), do: [priv_path(), share_path(), etc_path(), run_path(), tmp_path()]
@@ -125,7 +174,9 @@ defmodule Caddy.Config do
 
   @doc "Get backup file path"
   @spec backup_json_file() :: Path.t()
-  def backup_json_file(), do: Path.join(xdg_config_home(), "caddy/backup.json")
+  def backup_json_file() do
+    Application.get_env(:caddy, :backup_json_file, Path.join(xdg_config_home(), "caddy/backup.json"))
+  end
 
   @doc "Convert config to caddyfile"
   @spec to_caddyfile(t()) :: caddyfile()

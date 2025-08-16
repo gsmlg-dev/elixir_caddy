@@ -34,14 +34,14 @@ If caddy_bin is not specifiy, Caddy.Server will not start.
 Set `caddy_bin` to the path of Caddy binary file and start `Caddy.Server`.
 
 ```elixir
-Caddy.Cofnig.set_bin("/usr/bin/caddy")
+Caddy.Config.set_bin("/usr/bin/caddy")
 Caddy.restart_server()
 ```
 
 This will restart server automatically
 
 ```elixir
-Caddy.Cofnig.set_bin!("/usr/bin/caddy")
+Caddy.Config.set_bin!("/usr/bin/caddy")
 ```
 
 ## Config
@@ -54,6 +54,14 @@ config :caddy, dump_log: false
 
 # caddy server will not start, this is useful for testing
 config :caddy, start: false
+
+# configure caddy paths
+config :caddy, :base_path, "/custom/caddy/path"
+config :caddy, :etc_path, "/custom/etc/path"
+config :caddy, :run_path, "/custom/run/path"
+config :caddy, :tmp_path, "/custom/tmp/path"
+config :caddy, :env_file, "/custom/path/envfile"
+config :caddy, :pid_file, "/custom/path/caddy.pid"
 ```
 
 ## Telemetry
