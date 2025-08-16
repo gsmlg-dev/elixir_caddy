@@ -11,7 +11,7 @@ defmodule Caddy.Telemetry do
   @doc """
   Emits a telemetry event for configuration changes.
   """
-  @spec emit_config_change(atom(), map(), keyword()) :: :ok
+  @spec emit_config_change(atom(), map(), keyword() | map()) :: :ok
   def emit_config_change(event_type, measurements \\ %{}, metadata \\ []) do
     metadata = Map.new(metadata)
     :telemetry.execute([:caddy, :config, event_type], measurements, metadata)
