@@ -133,7 +133,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:post_config, %{duration: duration, status: resp.status}, %{path: path, payload_size: byte_size(data_string)})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -150,7 +149,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:post_config, %{duration: duration, status: resp.status}, %{path: "/", payload_size: byte_size(data_string)})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -170,7 +168,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:put_config, %{duration: duration, status: resp.status}, %{path: path, payload_size: byte_size(data_string)})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -187,7 +184,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:put_config, %{duration: duration, status: resp.status}, %{path: "/", payload_size: byte_size(data_string)})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -207,7 +203,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:patch_config, %{duration: duration, status: resp.status}, %{path: path, payload_size: byte_size(data_string)})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -224,7 +219,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:patch_config, %{duration: duration, status: resp.status}, %{path: "/", payload_size: byte_size(data_string)})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -243,7 +237,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:delete_config, %{duration: duration, status: resp.status}, %{path: path})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -259,7 +252,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:delete_config, %{duration: duration, status: resp.status}, %{path: "/"})
-        Logger.debug(inspect(resp))
         body
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -279,7 +271,6 @@ defmodule Caddy.Admin.Api do
       {:ok, resp, json_conf} ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_api_event(:adapt, %{duration: duration, status: resp.status}, %{payload_size: byte_size(conf)})
-        Logger.debug(inspect(resp))
         json_conf
       {:error, reason} ->
         duration = System.monotonic_time() - start_time

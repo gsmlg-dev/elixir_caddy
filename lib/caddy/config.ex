@@ -267,13 +267,11 @@ defmodule Caddy.Config do
          :ok <- File.write(backup_file, json) do
       duration = System.monotonic_time() - start_time
       Caddy.Telemetry.emit_config_change(:backup, %{duration: duration, file_size: byte_size(json)}, %{file_path: backup_file})
-      Logger.debug("Configuration backed up to #{backup_file}")
       :ok
     else
       error ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_config_change(:backup_error, %{duration: duration}, %{error: inspect(error)})
-        Logger.error("Failed to backup configuration: #{inspect(error)}")
         error
     end
   end
@@ -294,7 +292,6 @@ defmodule Caddy.Config do
       error ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_config_change(:restore_error, %{duration: duration}, %{file_path: backup_file, error: inspect(error)})
-        Logger.error("Failed to restore configuration from #{backup_file}")
         error
     end
   end
@@ -310,13 +307,11 @@ defmodule Caddy.Config do
          :ok <- File.write(saved_json_file(), json) do
       duration = System.monotonic_time() - start_time
       Caddy.Telemetry.emit_config_change(:save, %{duration: duration, file_size: byte_size(json)}, %{file_path: saved_json_file()})
-      Logger.debug("Configuration saved to #{saved_json_file()}")
       :ok
     else
       error ->
         duration = System.monotonic_time() - start_time
         Caddy.Telemetry.emit_config_change(:save_error, %{duration: duration}, %{error: inspect(error)})
-        Logger.error("Failed to save configuration: #{inspect(error)}")
         error
     end
   end
