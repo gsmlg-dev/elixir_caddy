@@ -109,4 +109,7 @@ defmodule Caddy do
 
     Supervisor.init(children, opts)
   end
+
+  defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
+  defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
 end

@@ -434,4 +434,9 @@ defmodule Caddy.Config do
       {"XDG_DATA_HOME", xdg_data_home()}
     ]
   end
+
+  @deprecated "user Caddy.set_bin/1 instead"
+  defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
+  @deprecated "user Caddy.set_bin/1 instead"
+  defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
 end
