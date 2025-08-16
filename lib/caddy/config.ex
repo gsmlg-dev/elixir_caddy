@@ -1,14 +1,11 @@
 defmodule Caddy.Config do
   @moduledoc """
-  Configuration management for Caddy reverse proxy server.
+  Configuration structure for Caddy reverse proxy server.
 
-  Manages Caddy configuration including binary path, global settings,
-  site configurations, and environment variables.
+  Defines the configuration structure and validation functions for Caddy.
   """
-  
-  require Logger
 
-  use Agent
+  require Logger
 
   @type t :: %__MODULE__{
           bin: binary() | nil,
@@ -59,42 +56,11 @@ defmodule Caddy.Config do
     end)
   end
 
-  @doc "Replace current configuration"
-  @spec set_config(t()) :: :ok | {:error, term()}
-  def set_config(%__MODULE__{} = config) do
-    case validate_config(config) do
-      :ok ->
-        start_time = System.monotonic_time()
-        Agent.update(__MODULE__, fn _ -> config end)
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:set, %{duration: duration}, %{config_size: map_size(config.sites)})
-        :ok
-      {:error, reason} ->
-        Caddy.Telemetry.emit_config_change(:set_error, %{}, %{error: reason})
-        {:error, reason}
-    end
-  end
-
-  @doc "Get current configuration"
-  @spec get_config() :: t()
-  def get_config() do
-    start_time = System.monotonic_time()
-    config = Agent.get(__MODULE__, & &1)
-    duration = System.monotonic_time() - start_time
-    Caddy.Telemetry.emit_config_change(:get, %{duration: duration}, %{config_size: map_size(config.sites)})
-    config
-  end
-
-  @doc "Get config value by key"
-  @spec get(atom()) :: binary() | nil
-  def get(name) do
-    Agent.get(__MODULE__, &Map.get(&1, name))
-  end
 
   @doc "Convert caddyfile to JSON"
-  @spec adapt(caddyfile()) :: {:ok, map()} | {:error, term()}
-  def adapt(binary) do
-    caddy_bin = get(:bin)
+  @spec adapt(caddyfile(), binary() | nil) :: {:ok, map()} | {:error, term()}
+  def adapt(binary, caddy_bin \\ nil) do
+    caddy_bin = caddy_bin || System.find_executable("caddy")
     start_time = System.monotonic_time()
     
     cond do
@@ -156,165 +122,6 @@ defmodule Caddy.Config do
     end
   end
 
-  @doc "Set Caddy binary path"
-  @spec set_bin(binary()) :: :ok | {:error, binary()}
-  def set_bin(caddy_bin) do
-    case validate_bin(caddy_bin) do
-      :ok ->
-        Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  @doc "Set binary path and restart server"
-  @spec set_bin!(binary()) :: :ok | {:error, term()}
-  def set_bin!(caddy_bin) do
-    Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
-    Caddy.restart_server()
-  end
-
-  @doc "Set global configuration"
-  @spec set_global(caddyfile()) :: :ok
-  def set_global(global) do
-    Agent.update(__MODULE__, &Map.put(&1, :global, global))
-  end
-
-  @doc "Set additional configuration blocks"
-  @spec set_additional([caddyfile()]) :: :ok
-  def set_additional(additionals) do
-    Agent.update(__MODULE__, &Map.put(&1, :additional, additionals))
-  end
-
-  @doc "Set site configuration"
-  @spec set_site(site_name(), site_config()) :: :ok | {:error, binary()}
-  def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
-
-  def set_site(name, site) when is_binary(name) do
-    case validate_site_config(site) do
-      :ok ->
-        Agent.update(
-          __MODULE__,
-          &Map.update(&1, :sites, %{}, fn sites -> Map.put(sites, name, site) end)
-        )
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  @doc "Start config agent"
-  @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
-  def start_link(args) do
-    Agent.start_link(fn -> init(args) end, name: __MODULE__)
-  end
-
-  @doc "Initialize configuration"
-  @spec init(keyword()) :: %__MODULE__{}
-  def init(args) do
-    bin =
-      cond do
-        Keyword.keyword?(args) and Keyword.has_key?(args, :caddy_bin) ->
-          Keyword.get(args, :caddy_bin)
-        :os.type() == {:unix, :linux} ->
-          "/usr/bin/caddy"
-        :os.type() == {:unix, :darwin} ->
-          "/opt/homebrew/bin/caddy"
-        true ->
-          System.find_executable("caddy")
-      end
-
-    ensure_path_exists()
-    
-    config = 
-      case saved() do
-        %{} = saved_config when map_size(saved_config) > 0 ->
-          struct(__MODULE__, saved_config)
-        _ ->
-          %__MODULE__{
-            env: init_env(),
-            bin: bin,
-            global: "admin unix/#{socket_file()}"
-          }
-      end
-    
-    case validate_config(config) do
-      :ok -> config
-      {:error, reason} ->
-        Logger.warning("Invalid saved configuration: #{reason}, using defaults")
-        %__MODULE__{
-          env: init_env(),
-          bin: bin,
-          global: "admin unix/#{socket_file()}"
-        }
-    end
-  end
-
-  @doc "Load saved configuration"
-  @spec saved() :: map()
-  def saved() do
-    load_saved_config(saved_json_file())
-  end
-
-  @doc "Backup current configuration"
-  @spec backup_config() :: :ok | {:error, term()}
-  def backup_config() do
-    config = get_config()
-    backup_file = backup_json_file()
-    start_time = System.monotonic_time()
-    
-    with :ok <- ensure_dir_exists(backup_file),
-         {:ok, json} <- Jason.encode(config, pretty: true),
-         :ok <- File.write(backup_file, json) do
-      duration = System.monotonic_time() - start_time
-      Caddy.Telemetry.emit_config_change(:backup, %{duration: duration, file_size: byte_size(json)}, %{file_path: backup_file})
-      :ok
-    else
-      error ->
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:backup_error, %{duration: duration}, %{error: inspect(error)})
-        error
-    end
-  end
-
-  @doc "Restore configuration from backup"
-  @spec restore_config() :: {:ok, t()} | {:error, term()}
-  def restore_config() do
-    backup_file = backup_json_file()
-    start_time = System.monotonic_time()
-    
-    case load_saved_config(backup_file) do
-      %{} = config_map ->
-        config = struct(__MODULE__, config_map)
-        _result = set_config(config)
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:restore, %{duration: duration}, %{file_path: backup_file, success: true})
-        {:ok, config}
-      error ->
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:restore_error, %{duration: duration}, %{file_path: backup_file, error: inspect(error)})
-        error
-    end
-  end
-
-  @doc "Save current configuration"
-  @spec save_config() :: :ok | {:error, term()}
-  def save_config() do
-    config = get_config()
-    start_time = System.monotonic_time()
-    
-    with :ok <- ensure_dir_exists(saved_json_file()),
-         {:ok, json} <- Jason.encode(config, pretty: true),
-         :ok <- File.write(saved_json_file(), json) do
-      duration = System.monotonic_time() - start_time
-      Caddy.Telemetry.emit_config_change(:save, %{duration: duration, file_size: byte_size(json)}, %{file_path: saved_json_file()})
-      :ok
-    else
-      error ->
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:save_error, %{duration: duration}, %{error: inspect(error)})
-        error
-    end
-  end
 
   @doc "Get backup file path"
   @spec backup_json_file() :: Path.t()
@@ -480,8 +287,16 @@ defmodule Caddy.Config do
 
   def can_execute?(_), do: false
 
-  # Private functions
-  defp load_saved_config(file_path) do
+  defp validate_adapted_config(config) when is_map(config) do
+    if Map.has_key?(config, "apps") or Map.has_key?(config, "admin") do
+      :ok
+    else
+      {:error, "Invalid Caddy configuration structure"}
+    end
+  end
+
+  @doc false
+  def load_saved_config(file_path) do
     with true <- File.exists?(file_path),
          {:ok, saved_config_string} <- File.read(file_path),
          {:ok, saved_config} <- Jason.decode(saved_config_string) do
@@ -496,15 +311,8 @@ defmodule Caddy.Config do
     end
   end
 
-  defp validate_adapted_config(config) when is_map(config) do
-    if Map.has_key?(config, "apps") or Map.has_key?(config, "admin") do
-      :ok
-    else
-      {:error, "Invalid Caddy configuration structure"}
-    end
-  end
-
-  defp ensure_dir_exists(file_path) do
+  @doc false
+  def ensure_dir_exists(file_path) do
     dir_path = Path.dirname(file_path)
     case File.mkdir_p(dir_path) do
       :ok -> :ok
@@ -512,7 +320,8 @@ defmodule Caddy.Config do
     end
   end
 
-  defp init_env() do
+  @doc false
+  def init_env() do
     [
       {"HOME", share_path()},
       {"XDG_CONFIG_HOME", xdg_config_home()},

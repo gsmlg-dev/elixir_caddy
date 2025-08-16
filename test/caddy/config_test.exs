@@ -1,6 +1,7 @@
 defmodule Caddy.ConfigTest do
   use ExUnit.Case
   alias Caddy.Config
+  alias Caddy.ConfigProvider
 
   setup do
     # Ensure fresh state for each test
@@ -83,7 +84,7 @@ defmodule Caddy.ConfigTest do
     end
 
     test "set_bin with validation" do
-      assert {:error, _} = Config.set_bin("/nonexistent/path/caddy")
+      assert {:error, _} = ConfigProvider.set_bin("/nonexistent/path/caddy")
     end
   end
 
@@ -139,7 +140,7 @@ defmodule Caddy.ConfigTest do
         sites: %{"test" => "reverse_proxy localhost:3000"}
       }
       
-      assert :ok = Config.set_config(valid_config)
+      assert :ok = ConfigProvider.set_config(valid_config)
     end
 
     test "set_config rejects invalid configuration" do
@@ -149,25 +150,25 @@ defmodule Caddy.ConfigTest do
         sites: %{"test" => "reverse_proxy localhost:3000"}
       }
       
-      assert {:error, "binary path must be a string or nil"} = Config.set_config(invalid_config)
+      assert {:error, "binary path must be a string or nil"} = ConfigProvider.set_config(invalid_config)
     end
   end
 
   describe "adapt function" do
     test "adapt returns error when binary not configured" do
       # Ensure binary is not configured
-      Config.set_config(%Config{bin: nil})
-      assert {:error, "Caddy binary path not configured"} = Config.adapt("test")
+      ConfigProvider.set_config(%Config{bin: nil})
+      assert {:error, "Caddy binary path not configured"} = ConfigProvider.adapt("test")
     end
 
     test "adapt returns error for empty content" do
-      assert {:error, _} = Config.adapt("")
+      assert {:error, _} = ConfigProvider.adapt("")
     end
   end
 
   describe "initialization" do
     test "init creates default configuration structure" do
-      config = Config.init([])
+      config = ConfigProvider.init([])
       assert %Config{} = config
       assert is_binary(config.global)
       assert is_list(config.env)

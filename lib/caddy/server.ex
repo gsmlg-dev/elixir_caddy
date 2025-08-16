@@ -13,6 +13,7 @@ defmodule Caddy.Server do
   """
   require Logger
   alias Caddy.Config
+  alias Caddy.ConfigProvider
 
   use GenServer
 
@@ -54,7 +55,7 @@ defmodule Caddy.Server do
   def handle_continue(:start, state) do
     Logger.debug("Caddy Server Starting")
     start_time = System.monotonic_time()
-    config = Config.get_config()
+    config = ConfigProvider.get_config()
     port = port_start(config)
     duration = System.monotonic_time() - start_time
     Caddy.Telemetry.emit_server_event(:start, %{duration: duration}, %{pid: port})
@@ -109,7 +110,7 @@ defmodule Caddy.Server do
 
     with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
          {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
-         {:get_config, config} <- {:get_config, Config.get_config()},
+         {:get_config, config} <- {:get_config, ConfigProvider.get_config()},
          {:validate_bin, :ok} <- {:validate_bin, validate_binary(config.bin)},
          {:validate_config, :ok} <- {:validate_config, validate_configuration(config)},
          {:ok, config_path} <- init_config_file(config) do
@@ -164,7 +165,7 @@ defmodule Caddy.Server do
   defp validate_configuration(config) do
     caddyfile = Config.to_caddyfile(config)
 
-    case Config.adapt(caddyfile) do
+    case Config.adapt(caddyfile, config.bin) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, "Invalid configuration: #{inspect(reason)}"}
     end
@@ -174,7 +175,7 @@ defmodule Caddy.Server do
 
   defp init_config_file(%Config{} = config) do
     with caddyfile <- Config.to_caddyfile(config),
-         {:ok, config_map} <- Config.adapt(caddyfile),
+         {:ok, config_map} <- Config.adapt(caddyfile, config.bin),
          {:ok, cfg} <- Jason.encode(config_map),
          :ok <- File.write(Config.init_file(), cfg) do
       {:ok, Config.init_file()}

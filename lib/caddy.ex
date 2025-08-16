@@ -99,7 +99,7 @@ defmodule Caddy do
             [Supervisor.child_spec() | (old_erlang_child_spec :: :supervisor.child_spec())]}}
   def init(args) do
     children = [
-      {Caddy.Config, [args]},
+      {Caddy.ConfigProvider, [args]},
       Caddy.Logger,
       Caddy.Server
       # Caddy.Admin
