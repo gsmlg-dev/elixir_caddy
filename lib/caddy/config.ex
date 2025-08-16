@@ -25,7 +25,7 @@ defmodule Caddy.Config do
 
   # Path utilities
   defdelegate user_home, to: System
-  
+
   @doc "Get configurable base path for caddy files"
   def base_path() do
     Application.get_env(:caddy, :base_path, Path.join(user_home(), ".local/share/caddy"))
@@ -86,7 +86,11 @@ defmodule Caddy.Config do
 
   @doc "Get saved JSON configuration file path"
   def saved_json_file() do
-    Application.get_env(:caddy, :saved_json_file, Path.join(xdg_config_home(), "caddy/autosave.json"))
+    Application.get_env(
+      :caddy,
+      :saved_json_file,
+      Path.join(xdg_config_home(), "caddy/autosave.json")
+    )
   end
 
   @doc false
@@ -97,40 +101,53 @@ defmodule Caddy.Config do
     paths()
     |> Enum.reduce_while(true, fn path, _acc ->
       case File.mkdir_p(path) do
-        :ok -> {:cont, true}
-        {:error, reason} -> 
+        :ok ->
+          {:cont, true}
+
+        {:error, reason} ->
           Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
           {:halt, false}
       end
     end)
   end
 
-
   @doc "Convert caddyfile to JSON"
   @spec adapt(caddyfile(), binary() | nil) :: {:ok, map()} | {:error, term()}
   def adapt(binary, caddy_bin \\ nil) do
     caddy_bin = caddy_bin || System.find_executable("caddy")
     start_time = System.monotonic_time()
-    
+
     cond do
       is_nil(caddy_bin) ->
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: "Caddy binary path not configured"})
+
+        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+          error: "Caddy binary path not configured"
+        })
+
         {:error, "Caddy binary path not configured"}
-        
+
       String.trim(binary) == "" ->
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: "Caddyfile content cannot be empty"})
+
+        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+          error: "Caddyfile content cannot be empty"
+        })
+
         {:error, "Caddyfile content cannot be empty"}
-        
+
       not File.exists?(caddy_bin) ->
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: "Caddy binary not found"})
+
+        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+          error: "Caddy binary not found"
+        })
+
         {:error, "Caddy binary not found: #{caddy_bin}"}
-        
+
       true ->
         tmp_config = Path.expand("Caddyfile", tmp_path())
-        
+
         try do
           with :ok <- ensure_dir_exists(tmp_config),
                :ok <- File.write(tmp_config, binary),
@@ -140,29 +157,53 @@ defmodule Caddy.Config do
                {:ok, config} <- Jason.decode(config_json),
                :ok <- validate_adapted_config(config) do
             duration = System.monotonic_time() - start_time
-            Caddy.Telemetry.emit_adapt_event(:success, %{duration: duration, config_size: byte_size(config_json)})
+
+            Caddy.Telemetry.emit_adapt_event(:success, %{
+              duration: duration,
+              config_size: byte_size(config_json)
+            })
+
             {:ok, config}
           else
             {error_output, non_zero} when is_integer(non_zero) and non_zero != 0 ->
               duration = System.monotonic_time() - start_time
-              Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: error_output, exit_code: non_zero})
+
+              Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+                error: error_output,
+                exit_code: non_zero
+              })
+
               Logger.error("Caddy command failed with exit code #{non_zero}: #{error_output}")
               {:error, {:caddy_error, non_zero, error_output}}
+
             error ->
               duration = System.monotonic_time() - start_time
-              Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: inspect(error)})
+
+              Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+                error: inspect(error)
+              })
+
               Logger.error("Caddy adaptation failed: #{inspect(error)}")
               error
           end
         rescue
           e in File.Error ->
             duration = System.monotonic_time() - start_time
-            Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: "File operation error"})
+
+            Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+              error: "File operation error"
+            })
+
             Logger.error("File operation error: #{inspect(e)}")
             {:error, {:file_error, e}}
+
           e in Jason.DecodeError ->
             duration = System.monotonic_time() - start_time
-            Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: "JSON decode error"})
+
+            Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+              error: "JSON decode error"
+            })
+
             Logger.error("JSON decode error: #{inspect(e)}")
             {:error, {:json_error, e}}
         after
@@ -171,11 +212,14 @@ defmodule Caddy.Config do
     end
   end
 
-
   @doc "Get backup file path"
   @spec backup_json_file() :: Path.t()
   def backup_json_file() do
-    Application.get_env(:caddy, :backup_json_file, Path.join(xdg_config_home(), "caddy/backup.json"))
+    Application.get_env(
+      :caddy,
+      :backup_json_file,
+      Path.join(xdg_config_home(), "caddy/backup.json")
+    )
   end
 
   @doc "Convert config to caddyfile"
@@ -245,10 +289,13 @@ defmodule Caddy.Config do
     cond do
       String.trim(listen) == "" ->
         {:error, "listen address cannot be empty"}
+
       String.trim(site) == "" ->
         {:error, "site configuration cannot be empty"}
+
       not String.contains?(listen, ":") ->
         {:error, "listen address must contain port (e.g., ':8080')"}
+
       true ->
         :ok
     end
@@ -262,15 +309,18 @@ defmodule Caddy.Config do
   @spec validate_config(t()) :: :ok | {:error, binary()}
   def validate_config(%__MODULE__{} = config) do
     cond do
-      not is_binary(config.global) or not is_list(config.additional) or not is_map(config.sites) or not is_list(config.env) ->
+      not is_binary(config.global) or not is_list(config.additional) or not is_map(config.sites) or
+          not is_list(config.env) ->
         {:error, "invalid configuration structure"}
-      
+
       not (is_binary(config.bin) or is_nil(config.bin)) ->
         {:error, "binary path must be a string or nil"}
-      
-      not Enum.all?(config.sites, fn {_name, site_config} -> validate_site_config(site_config) == :ok end) ->
+
+      not Enum.all?(config.sites, fn {_name, site_config} ->
+        validate_site_config(site_config) == :ok
+      end) ->
         {:error, "invalid site configuration in sites"}
-      
+
       true ->
         :ok
     end
@@ -315,6 +365,7 @@ defmodule Caddy.Config do
       case System.cmd(bin, ["version"]) do
         {"v2" <> _, 0} ->
           :ok
+
         _ ->
           {:error, "Caddy binary version check failed"}
       end
@@ -353,10 +404,13 @@ defmodule Caddy.Config do
          {:ok, saved_config} <- Jason.decode(saved_config_string) do
       saved_config
     else
-      false -> %{}
+      false ->
+        %{}
+
       {:error, reason} ->
         Logger.warning("Failed to read saved configuration: #{inspect(reason)}")
         %{}
+
       _ ->
         %{}
     end
@@ -365,6 +419,7 @@ defmodule Caddy.Config do
   @doc false
   def ensure_dir_exists(file_path) do
     dir_path = Path.dirname(file_path)
+
     case File.mkdir_p(dir_path) do
       :ok -> :ok
       {:error, reason} -> {:error, {:mkdir_error, reason}}

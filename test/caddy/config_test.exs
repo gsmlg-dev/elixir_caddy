@@ -17,17 +17,18 @@ defmodule Caddy.ConfigTest do
         sites: %{"test" => "reverse_proxy localhost:3000"},
         env: [{"KEY", "value"}]
       }
-      
+
       assert :ok = Config.validate_config(config)
     end
 
     test "invalid configuration structure" do
       config = %Config{
-        bin: 123,  # Invalid type
+        # Invalid type
+        bin: 123,
         global: "debug",
         sites: %{"test" => "reverse_proxy localhost:3000"}
       }
-      
+
       assert {:error, "binary path must be a string or nil"} = Config.validate_config(config)
     end
 
@@ -37,7 +38,7 @@ defmodule Caddy.ConfigTest do
         global: "debug",
         sites: %{"test" => ""}
       }
-      
+
       assert {:error, "invalid site configuration in sites"} = Config.validate_config(config)
     end
   end
@@ -116,7 +117,7 @@ defmodule Caddy.ConfigTest do
           "proxy" => {":8080", "reverse_proxy localhost:3128"}
         }
       }
-      
+
       caddyfile = Config.to_caddyfile(config)
       assert String.contains?(caddyfile, "debug")
       assert String.contains?(caddyfile, "metrics :2020")
@@ -139,18 +140,20 @@ defmodule Caddy.ConfigTest do
         global: "debug",
         sites: %{"test" => "reverse_proxy localhost:3000"}
       }
-      
+
       assert :ok = ConfigProvider.set_config(valid_config)
     end
 
     test "set_config rejects invalid configuration" do
       invalid_config = %Config{
-        bin: 123,  # Invalid type
+        # Invalid type
+        bin: 123,
         global: "debug",
         sites: %{"test" => "reverse_proxy localhost:3000"}
       }
-      
-      assert {:error, "binary path must be a string or nil"} = ConfigProvider.set_config(invalid_config)
+
+      assert {:error, "binary path must be a string or nil"} =
+               ConfigProvider.set_config(invalid_config)
     end
   end
 
@@ -180,11 +183,11 @@ defmodule Caddy.ConfigTest do
   describe "file operations" do
     test "ensure_path_exists handles directory creation" do
       test_dir = Path.join(System.tmp_dir!(), "caddy_test_#{System.unique_integer()}")
-      
+
       # Test the core directory creation logic
       assert File.mkdir_p(Path.join(test_dir, "etc")) == :ok
       assert File.exists?(Path.join(test_dir, "etc"))
-      
+
       # Cleanup
       File.rm_rf(test_dir)
     end

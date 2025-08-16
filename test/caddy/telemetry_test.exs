@@ -30,8 +30,13 @@ defmodule Caddy.TelemetryTest do
         [:caddy, :api, :request]
       ])
 
-      Telemetry.emit_api_event(:request, %{duration: 300, status: 200}, %{method: :get, path: "/config"})
-      assert_received {[:caddy, :api, :request], _, %{duration: 300, status: 200}, %{method: :get, path: "/config"}}
+      Telemetry.emit_api_event(:request, %{duration: 300, status: 200}, %{
+        method: :get,
+        path: "/config"
+      })
+
+      assert_received {[:caddy, :api, :request], _, %{duration: 300, status: 200},
+                       %{method: :get, path: "/config"}}
     end
 
     test "emit_validation_event/3 emits validation events" do
@@ -49,7 +54,9 @@ defmodule Caddy.TelemetryTest do
       ])
 
       Telemetry.emit_file_event(:read, %{duration: 25, size: 1024}, %{path: "/tmp/caddy.json"})
-      assert_received {[:caddy, :file, :read], _, %{duration: 25, size: 1024}, %{path: "/tmp/caddy.json"}}
+
+      assert_received {[:caddy, :file, :read], _, %{duration: 25, size: 1024},
+                       %{path: "/tmp/caddy.json"}}
     end
 
     test "emit_adapt_event/3 emits adaptation events" do
@@ -57,8 +64,12 @@ defmodule Caddy.TelemetryTest do
         [:caddy, :adapt, :success]
       ])
 
-      Telemetry.emit_adapt_event(:success, %{duration: 500, config_size: 1024}, %{format: :caddyfile})
-      assert_received {[:caddy, :adapt, :success], _, %{duration: 500, config_size: 1024}, %{format: :caddyfile}}
+      Telemetry.emit_adapt_event(:success, %{duration: 500, config_size: 1024}, %{
+        format: :caddyfile
+      })
+
+      assert_received {[:caddy, :adapt, :success], _, %{duration: 500, config_size: 1024},
+                       %{format: :caddyfile}}
     end
   end
 
@@ -74,10 +85,14 @@ defmodule Caddy.TelemetryTest do
     test "attach_handler/3 attaches telemetry handler" do
       handler = :test_handler
       events = [[:caddy, :config, :set]]
-      
-      :ok = Telemetry.attach_handler(handler, events, fn _event_name, _measurements, _metadata, _config ->
-        send(self(), :telemetry_received)
-      end)
+
+      :ok =
+        Telemetry.attach_handler(handler, events, fn _event_name,
+                                                     _measurements,
+                                                     _metadata,
+                                                     _config ->
+          send(self(), :telemetry_received)
+        end)
 
       Telemetry.emit_config_change(:set, %{duration: 100}, %{test: true})
       assert_received :telemetry_received
@@ -88,13 +103,17 @@ defmodule Caddy.TelemetryTest do
     test "detach_handler/1 removes telemetry handler" do
       handler = :test_detach_handler
       events = [[:caddy, :config, :set]]
-      
-      :ok = Telemetry.attach_handler(handler, events, fn _event_name, _measurements, _metadata, _config ->
-        send(self(), :telemetry_received)
-      end)
+
+      :ok =
+        Telemetry.attach_handler(handler, events, fn _event_name,
+                                                     _measurements,
+                                                     _metadata,
+                                                     _config ->
+          send(self(), :telemetry_received)
+        end)
 
       :ok = Telemetry.detach_handler(handler)
-      
+
       Telemetry.emit_config_change(:set, %{duration: 200}, %{test: true})
       refute_received :telemetry_received
     end

@@ -26,8 +26,13 @@ defmodule Caddy.ConfigProvider do
         start_time = System.monotonic_time()
         Agent.update(__MODULE__, fn _ -> config end)
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:set, %{duration: duration}, %{config_size: map_size(config.sites)})
+
+        Caddy.Telemetry.emit_config_change(:set, %{duration: duration}, %{
+          config_size: map_size(config.sites)
+        })
+
         :ok
+
       {:error, reason} ->
         Caddy.Telemetry.emit_config_change(:set_error, %{}, %{error: reason})
         {:error, reason}
@@ -40,7 +45,11 @@ defmodule Caddy.ConfigProvider do
     start_time = System.monotonic_time()
     config = Agent.get(__MODULE__, & &1)
     duration = System.monotonic_time() - start_time
-    Caddy.Telemetry.emit_config_change(:get, %{duration: duration}, %{config_size: map_size(config.sites)})
+
+    Caddy.Telemetry.emit_config_change(:get, %{duration: duration}, %{
+      config_size: map_size(config.sites)
+    })
+
     config
   end
 
@@ -56,6 +65,7 @@ defmodule Caddy.ConfigProvider do
     case Config.validate_bin(caddy_bin) do
       :ok ->
         Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
+
       {:error, reason} ->
         {:error, reason}
     end
@@ -91,6 +101,7 @@ defmodule Caddy.ConfigProvider do
           __MODULE__,
           &Map.update(&1, :sites, %{}, fn sites -> Map.put(sites, name, site) end)
         )
+
       {:error, reason} ->
         {:error, reason}
     end
@@ -102,17 +113,27 @@ defmodule Caddy.ConfigProvider do
     config = get_config()
     backup_file = Config.backup_json_file()
     start_time = System.monotonic_time()
-    
+
     with :ok <- Config.ensure_dir_exists(backup_file),
          {:ok, json} <- Jason.encode(config, pretty: true),
          :ok <- File.write(backup_file, json) do
       duration = System.monotonic_time() - start_time
-      Caddy.Telemetry.emit_config_change(:backup, %{duration: duration, file_size: byte_size(json)}, %{file_path: backup_file})
+
+      Caddy.Telemetry.emit_config_change(
+        :backup,
+        %{duration: duration, file_size: byte_size(json)},
+        %{file_path: backup_file}
+      )
+
       :ok
     else
       error ->
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:backup_error, %{duration: duration}, %{error: inspect(error)})
+
+        Caddy.Telemetry.emit_config_change(:backup_error, %{duration: duration}, %{
+          error: inspect(error)
+        })
+
         error
     end
   end
@@ -122,17 +143,28 @@ defmodule Caddy.ConfigProvider do
   def restore_config() do
     backup_file = Config.backup_json_file()
     start_time = System.monotonic_time()
-    
+
     case load_saved_config(backup_file) do
       %{} = config_map ->
         config = struct(Config, config_map)
         _result = set_config(config)
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:restore, %{duration: duration}, %{file_path: backup_file, success: true})
+
+        Caddy.Telemetry.emit_config_change(:restore, %{duration: duration}, %{
+          file_path: backup_file,
+          success: true
+        })
+
         {:ok, config}
+
       error ->
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:restore_error, %{duration: duration}, %{file_path: backup_file, error: inspect(error)})
+
+        Caddy.Telemetry.emit_config_change(:restore_error, %{duration: duration}, %{
+          file_path: backup_file,
+          error: inspect(error)
+        })
+
         error
     end
   end
@@ -142,17 +174,27 @@ defmodule Caddy.ConfigProvider do
   def save_config() do
     config = get_config()
     start_time = System.monotonic_time()
-    
+
     with :ok <- Config.ensure_dir_exists(Config.saved_json_file()),
          {:ok, json} <- Jason.encode(config, pretty: true),
          :ok <- File.write(Config.saved_json_file(), json) do
       duration = System.monotonic_time() - start_time
-      Caddy.Telemetry.emit_config_change(:save, %{duration: duration, file_size: byte_size(json)}, %{file_path: Config.saved_json_file()})
+
+      Caddy.Telemetry.emit_config_change(
+        :save,
+        %{duration: duration, file_size: byte_size(json)},
+        %{file_path: Config.saved_json_file()}
+      )
+
       :ok
     else
       error ->
         duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_config_change(:save_error, %{duration: duration}, %{error: inspect(error)})
+
+        Caddy.Telemetry.emit_config_change(:save_error, %{duration: duration}, %{
+          error: inspect(error)
+        })
+
         error
     end
   end
@@ -164,20 +206,24 @@ defmodule Caddy.ConfigProvider do
       cond do
         Keyword.keyword?(args) and Keyword.has_key?(args, :caddy_bin) ->
           Keyword.get(args, :caddy_bin)
+
         :os.type() == {:unix, :linux} ->
           "/usr/bin/caddy"
+
         :os.type() == {:unix, :darwin} ->
           "/opt/homebrew/bin/caddy"
+
         true ->
           System.find_executable("caddy")
       end
 
     Config.ensure_path_exists()
-    
-    config = 
+
+    config =
       case load_saved_config(Config.saved_json_file()) do
         %{} = saved_config when map_size(saved_config) > 0 ->
           struct(Config, saved_config)
+
         _ ->
           %Config{
             env: Config.init_env(),
@@ -185,11 +231,14 @@ defmodule Caddy.ConfigProvider do
             global: "admin unix/#{Config.socket_file()}"
           }
       end
-    
+
     case Config.validate_config(config) do
-      :ok -> config
+      :ok ->
+        config
+
       {:error, reason} ->
         Logger.warning("Invalid saved configuration: #{reason}, using defaults")
+
         %Config{
           env: Config.init_env(),
           bin: bin,
@@ -209,5 +258,4 @@ defmodule Caddy.ConfigProvider do
   defp load_saved_config(file_path) do
     Config.load_saved_config(file_path)
   end
-
 end
