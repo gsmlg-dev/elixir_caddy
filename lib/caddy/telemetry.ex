@@ -20,7 +20,7 @@ defmodule Caddy.Telemetry do
   @doc """
   Emits a telemetry event for server lifecycle events.
   """
-  @spec emit_server_event(atom(), map(), keyword()) :: :ok
+  @spec emit_server_event(atom(), map(), keyword() | map()) :: :ok
   def emit_server_event(event_type, measurements \\ %{}, metadata \\ []) do
     metadata = Map.new(metadata)
     :telemetry.execute([:caddy, :server, event_type], measurements, metadata)
@@ -29,7 +29,7 @@ defmodule Caddy.Telemetry do
   @doc """
   Emits a telemetry event for API operations.
   """
-  @spec emit_api_event(atom(), map(), keyword()) :: :ok
+  @spec emit_api_event(atom(), map(), keyword() | map()) :: :ok
   def emit_api_event(event_type, measurements \\ %{}, metadata \\ []) do
     metadata = Map.new(metadata)
     :telemetry.execute([:caddy, :api, event_type], measurements, metadata)
@@ -38,7 +38,7 @@ defmodule Caddy.Telemetry do
   @doc """
   Emits a telemetry event for configuration validation.
   """
-  @spec emit_validation_event(atom(), map(), keyword()) :: :ok
+  @spec emit_validation_event(atom(), map(), keyword() | map()) :: :ok
   def emit_validation_event(result, measurements \\ %{}, metadata \\ []) do
     metadata = Map.new(metadata)
     :telemetry.execute([:caddy, :validation, result], measurements, metadata)
@@ -56,7 +56,7 @@ defmodule Caddy.Telemetry do
   @doc """
   Emits a telemetry event for adaptation operations.
   """
-  @spec emit_adapt_event(atom(), map(), keyword()) :: :ok
+  @spec emit_adapt_event(atom(), map(), keyword() | map()) :: :ok
   def emit_adapt_event(result, measurements \\ %{}, metadata \\ []) do
     metadata = Map.new(metadata)
     :telemetry.execute([:caddy, :adapt, result], measurements, metadata)
