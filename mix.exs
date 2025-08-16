@@ -35,6 +35,8 @@ defmodule Caddy.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
+      {:telemetry, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
       {:ex_doc, ">= 0.0.0", only: :docs, runtime: false},
       {:mox, "~> 1.0", only: :test}
     ]

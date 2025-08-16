@@ -53,8 +53,11 @@ defmodule Caddy.Server do
   @impl true
   def handle_continue(:start, state) do
     Logger.debug("Caddy Server Starting")
+    start_time = System.monotonic_time()
     config = Config.get_config()
     port = port_start(config)
+    duration = System.monotonic_time() - start_time
+    Caddy.Telemetry.emit_server_event(:start, %{duration: duration}, %{pid: port})
     state = state |> Map.put(:port, port)
     {:noreply, state}
   end
@@ -68,6 +71,7 @@ defmodule Caddy.Server do
 
   def handle_info({port, {:exit_status, exit_status}}, state) do
     Logger.warning("Caddy#{inspect(port)}: exit_status: #{exit_status}")
+    Caddy.Telemetry.emit_server_event(:exit, %{}, %{exit_status: exit_status, port: inspect(port)})
     Process.exit(self(), :normal)
     {:noreply, state}
   end
@@ -75,6 +79,7 @@ defmodule Caddy.Server do
   # handle the trapped exit call
   def handle_info({:EXIT, _from, reason}, state) do
     Logger.debug("Caddy.Server exiting")
+    Caddy.Telemetry.emit_server_event(:shutdown, %{}, %{reason: reason})
     cleanup(reason, state)
     {:stop, reason, state}
   end
@@ -83,7 +88,10 @@ defmodule Caddy.Server do
   @impl true
   def terminate(reason, state) do
     Logger.debug("Caddy.Server terminating")
+    start_time = System.monotonic_time()
     cleanup(reason, state)
+    duration = System.monotonic_time() - start_time
+    Caddy.Telemetry.emit_server_event(:terminate, %{duration: duration}, %{reason: reason})
     Caddy.Logger.Store.tail() |> Enum.each(&IO.puts("    " <> &1))
   end
 
@@ -97,6 +105,7 @@ defmodule Caddy.Server do
 
   defp bootstrap() do
     Logger.debug("Caddy Server bootstrap")
+    start_time = System.monotonic_time()
 
     with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
          {:cleanup_pidfile, :ok} <- {:cleanup_pidfile, cleanup_pidfile()},
@@ -104,24 +113,38 @@ defmodule Caddy.Server do
          {:validate_bin, :ok} <- {:validate_bin, validate_binary(config.bin)},
          {:validate_config, :ok} <- {:validate_config, validate_configuration(config)},
          {:ok, config_path} <- init_config_file(config) do
+      duration = System.monotonic_time() - start_time
+      Caddy.Telemetry.emit_server_event(:bootstrap_success, %{duration: duration}, %{config_path: config_path})
       {:ok, config_path}
     else
       {:ensure_path_exists, false} ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{error: "Failed to create required directories"})
         {:error, "Failed to create required directories"}
 
       {:cleanup_pidfile, _} ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{error: "Failed to cleanup pidfile"})
         {:error, "Failed to cleanup pidfile"}
 
       {:validate_bin, {:error, reason}} ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{error: reason})
         {:error, reason}
 
       {:validate_config, {:error, reason}} ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{error: reason})
         {:error, reason}
 
       {:init_config_file, error} ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{error: "Configuration file error: #{inspect(error)}"})
         {:error, "Configuration file error: #{inspect(error)}"}
 
       error ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{error: inspect(error)})
         Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
         {:error, error}
     end
@@ -181,6 +204,8 @@ defmodule Caddy.Server do
   end
 
   defp cleanup(reason, %{port: port} = _state) do
+    start_time = System.monotonic_time()
+    
     case port |> Port.info(:os_pid) do
       {:os_pid, pid} ->
         {_, code} = System.cmd("kill", ["-9", "#{pid}"])
@@ -191,6 +216,8 @@ defmodule Caddy.Server do
     end
 
     cleanup_pidfile()
+    duration = System.monotonic_time() - start_time
+    Caddy.Telemetry.emit_server_event(:cleanup, %{duration: duration}, %{reason: reason})
 
     case reason do
       :normal -> :normal
@@ -208,7 +235,8 @@ defmodule Caddy.Server do
       Config.pid_file()
     ]
 
-    Port.open(
+    start_time = System.monotonic_time()
+    port = Port.open(
       {:spawn_executable, bin_path},
       [
         {:args, args},
@@ -222,6 +250,9 @@ defmodule Caddy.Server do
         :stderr_to_stdout
       ]
     )
+    duration = System.monotonic_time() - start_time
+    Caddy.Telemetry.emit_server_event(:process_start, %{duration: duration}, %{binary_path: bin_path, args: args})
+    port
   end
 
   defp fixup_env(env) when is_list(env) do

@@ -54,5 +54,39 @@ config :caddy, dump_log: false
 
 # caddy server will not start, this is useful for testing
 config :caddy, start: false
-
 ```
+
+## Telemetry
+
+The library includes comprehensive telemetry support for monitoring Caddy operations. Telemetry events are emitted for:
+
+- **Configuration changes**: `[:caddy, :config, :set]`, `[:caddy, :config, :get]`, etc.
+- **Server lifecycle**: `[:caddy, :server, :start]`, `[:caddy, :server, :stop]`
+- **API operations**: `[:caddy, :api, :request]`, `[:caddy, :api, :response]`
+- **File operations**: `[:caddy, :file, :read]`, `[:caddy, :file, :write]`
+- **Validation**: `[:caddy, :validation, :success]`, `[:caddy, :validation, :error]`
+- **Adaptation**: `[:caddy, :adapt, :success]`, `[:caddy, :adapt, :error]`
+
+### Usage Example
+
+```elixir
+# Attach telemetry handler
+:telemetry.attach_many("caddy_handler", [
+  [:caddy, :config, :set],
+  [:caddy, :server, :start]
+], fn event_name, measurements, metadata, _config ->
+  IO.inspect({event_name, measurements, metadata})
+end, %{})
+
+# Start telemetry poller
+Caddy.Telemetry.start_poller(30_000)
+```
+
+### Available Functions
+
+- `Caddy.Telemetry.emit_config_change/3` - Configuration change events
+- `Caddy.Telemetry.emit_server_event/3` - Server lifecycle events
+- `Caddy.Telemetry.emit_api_event/3` - API operation events
+- `Caddy.Telemetry.list_events/0` - List all available events
+- `Caddy.Telemetry.attach_handler/3` - Attach telemetry handler
+- `Caddy.Telemetry.detach_handler/1` - Detach telemetry handler
