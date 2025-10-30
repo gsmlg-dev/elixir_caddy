@@ -151,7 +151,7 @@ defmodule Caddy.Server do
 
         {:error, reason}
 
-      {:error, reason} = error ->
+      {:error, reason} ->
         duration = System.monotonic_time() - start_time
 
         Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{
