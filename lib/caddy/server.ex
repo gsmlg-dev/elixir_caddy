@@ -133,15 +133,6 @@ defmodule Caddy.Server do
 
         {:error, "Failed to create required directories"}
 
-      {:cleanup_pidfile, _} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{
-          error: "Failed to cleanup pidfile"
-        })
-
-        {:error, "Failed to cleanup pidfile"}
-
       {:validate_bin, {:error, reason}} ->
         duration = System.monotonic_time() - start_time
 
@@ -160,14 +151,14 @@ defmodule Caddy.Server do
 
         {:error, reason}
 
-      {:init_config_file, error} ->
+      {:error, reason} = error ->
         duration = System.monotonic_time() - start_time
 
         Caddy.Telemetry.emit_server_event(:bootstrap_error, %{duration: duration}, %{
-          error: "Configuration file error: #{inspect(error)}"
+          error: "Configuration file error: #{inspect(reason)}"
         })
 
-        {:error, "Configuration file error: #{inspect(error)}"}
+        {:error, "Configuration file error: #{inspect(reason)}"}
 
       error ->
         duration = System.monotonic_time() - start_time

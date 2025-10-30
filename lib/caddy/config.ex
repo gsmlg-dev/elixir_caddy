@@ -264,7 +264,6 @@ defmodule Caddy.Config do
         case check_bin(caddy_bin) do
           :ok -> :ok
           {:error, _} -> {:error, "Invalid Caddy binary or version incompatibility"}
-          _ -> {:error, "Failed to validate Caddy binary"}
         end
     end
   rescue
@@ -409,9 +408,6 @@ defmodule Caddy.Config do
 
       {:error, reason} ->
         Logger.warning("Failed to read saved configuration: #{inspect(reason)}")
-        %{}
-
-      _ ->
         %{}
     end
   end

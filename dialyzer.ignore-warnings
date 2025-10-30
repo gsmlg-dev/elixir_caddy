@@ -1,0 +1,5 @@
+# Supervisor callbacks - false positives from Dialyzer
+# These functions return supervisor specs and don't have "no return" issues
+lib/caddy.ex:100
+lib/caddy/logger.ex:37
+lib/caddy/telemetry.ex:69
