@@ -30,3 +30,10 @@ caddyserver-*.tar
 /priv/data
 /priv/bin
 
+
+# devenv
+.devenv/
+.devenv.*
+
+# direnv
+.direnv
