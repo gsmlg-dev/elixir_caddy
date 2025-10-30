@@ -4,38 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-An Elixir library that manages Caddy reverse proxy server as part of your Elixir application's supervision tree. Provides configuration management, API access, and logging capabilities.
+An Elixir library that manages Caddy reverse proxy server as part of your Elixir application's supervision tree. Provides configuration management, API access, telemetry, and logging capabilities.
 
 ## Architecture
 
 The application follows a supervisor-worker pattern with these key components:
 
 - **Caddy**: Main supervisor managing the entire Caddy subsystem
-- **Caddy.Application**: Application entry point
+- **Caddy.Application**: Application entry point (only starts in non-test environments)
 - **Caddy.Server**: GenServer that manages the actual Caddy binary process
 - **Caddy.Config**: Agent that stores and manages Caddy configuration
 - **Caddy.Admin.Api**: HTTP API client for Caddy admin interface
 - **Caddy.Logger**: Logging subsystem with buffer and storage
+- **Caddy.Telemetry**: Comprehensive telemetry for monitoring operations
 
 ## Key Components
 
 ### Configuration Management (`Caddy.Config`)
 - Agent-based configuration storage in `%Caddy.Config{}` struct
 - Manages binary path, global settings, site configurations, and environment variables
-- Provides file-based configuration persistence in `~/.local/share/caddy/`
-- Supports Caddyfile → JSON adaptation
+- Provides file-based configuration persistence in `~/.local/share/caddy/` (configurable via `:base_path`)
+- Supports Caddyfile → JSON adaptation via admin API
+- Thread-safe configuration updates with `set_bin!` for automatic restart
 
 ### Server Management (`Caddy.Server`)
 - GenServer that starts/stops Caddy binary process
 - Handles process lifecycle, cleanup, and restart logic
 - Manages Caddyfile generation and JSON configuration
-- Uses Unix domain sockets for admin interface
+- Uses Unix domain sockets for admin interface at `/tmp/caddy-{port}.sock`
+- Automatic PID file management for process tracking
 
 ### API Access (`Caddy.Admin.Api`)
 - RESTful API wrapper for Caddy admin endpoints
 - Supports GET/POST/PUT/PATCH/DELETE operations
-- Configuration loading and adaptation
+- Configuration loading and adaptation with validation
 - Mock support for testing via `Caddy.Admin.RequestBehaviour`
+- Unix socket communication for local admin interface
 
 ## Development Commands
 
@@ -44,36 +48,60 @@ The application follows a supervisor-worker pattern with these key components:
 # Install dependencies
 mix deps.get
 
-# Run tests
+# Run all tests
 mix test
 
-# Run specific test
+# Run specific test file
 mix test test/caddy/admin/api_test.exs
+
+# Run specific test
+mix test test/caddy/admin/api_test.exs:10
 
 # Format code
 mix format
 
-# Publish package
+# Check formatting
+mix format --check-formatted
+
+# Publish package to Hex (includes cleanup)
 mix publish
 ```
 
-### Configuration
+### Interactive Development
+```bash
+# Start IEx with the project
+iex -S mix
+
+# In IEx, manually start Caddy
+Caddy.start("/usr/bin/caddy")
+
+# Or use auto-discovery
+Caddy.start()
+```
+
+### Configuration Paths
 ```elixir
-# Add to mix.exs dependencies
-{:caddy, "~> 2.0"}
+# Configure custom paths in config.exs
+config :caddy, :base_path, "/custom/caddy/path"
+config :caddy, :etc_path, "/custom/etc/path"
+config :caddy, :run_path, "/custom/run/path"
+config :caddy, :tmp_path, "/custom/tmp/path"
+config :caddy, :env_file, "/custom/path/envfile"
+config :caddy, :pid_file, "/custom/path/caddy.pid"
 
-# Add to application.ex
-extra_applications: [Caddy.Application]
-
-# Configure in config.exs
-config :caddy, dump_log: false  # Log to stdout
+# Test mode configuration
+config :caddy, dump_log: false  # Don't log to stdout
 config :caddy, start: false     # Disable auto-start for testing
 ```
 
 ### Usage Examples
 ```elixir
-# Set Caddy binary path
+# Set Caddy binary path (without restart)
 Caddy.Config.set_bin("/usr/bin/caddy")
+Caddy.restart_server()
+
+# Set binary and auto-restart
+Caddy.Config.set_bin!("/usr/bin/caddy")
 
 # Configure global settings
 Caddy.Config.set_global("""
@@ -88,34 +116,34 @@ reverse_proxy {
 }
 """)
 
-# Restart server
-Caddy.restart_server()
-
 # Use admin API
-Caddy.Admin.Api.get_config()
+{:ok, config} = Caddy.Admin.Api.get_config()
 Caddy.Admin.Api.load(new_config)
+Caddy.Admin.Api.adapt(caddyfile_content)
+
+# Telemetry integration
+:telemetry.attach("my_handler",
+  [:caddy, :server, :start],
+  &MyApp.handle_telemetry/4,
+  %{})
 ```
 
-## File Structure
+## Testing Strategy
 
-- `lib/caddy.ex`: Main supervisor and public API
-- `lib/caddy/application.ex`: Application entry point
-- `lib/caddy/server.ex`: Caddy process management
-- `lib/caddy/config.ex`: Configuration management
-- `lib/caddy/admin/api.ex`: Admin API client
-- `lib/caddy/logger/`: Logging subsystem
-- `test/`: Test suite with Mox mocks
-
-## Testing
-
-Uses ExUnit with Mox for mocking HTTP requests. Test setup includes:
+Uses ExUnit with Mox for mocking HTTP requests:
 - Mock HTTP client: `Caddy.Admin.RequestMock`
-- Application startup in test_helper.exs
-- Sample configuration tests
+- Define mock expectations in tests using `Mox.expect/4`
+- Application doesn't auto-start in test environment
+- Test helper configures mocks and application
 
-## Environment Setup
+## Telemetry Events
 
-- Requires Caddy binary (v2+) in PATH or manually specified
-- Uses `~/.local/share/caddy/` for configuration storage
-- Creates necessary directories on startup
-- Supports environment variable configuration via Agent
+The library emits telemetry events for monitoring:
+- Configuration: `[:caddy, :config, :set]`, `[:caddy, :config, :get]`
+- Server lifecycle: `[:caddy, :server, :start]`, `[:caddy, :server, :stop]`
+- API operations: `[:caddy, :api, :request]`, `[:caddy, :api, :response]`
+- File operations: `[:caddy, :file, :read]`, `[:caddy, :file, :write]`
+- Validation: `[:caddy, :validation, :success]`, `[:caddy, :validation, :error]`
+- Adaptation: `[:caddy, :adapt, :success]`, `[:caddy, :adapt, :error]`
+
+Use `Caddy.Telemetry.list_events/0` to see all available events.
