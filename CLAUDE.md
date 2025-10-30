@@ -63,6 +63,18 @@ mix format
 # Check formatting
 mix format --check-formatted
 
+# Static code analysis with Credo
+mix credo
+
+# Strict mode (shows all issues including low priority)
+mix credo --strict
+
+# Type checking with Dialyzer (first run builds PLT file, may take time)
+mix dialyzer
+
+# Run all linting (Credo + Dialyzer)
+mix lint
+
 # Publish package to Hex (includes cleanup)
 mix publish
 ```

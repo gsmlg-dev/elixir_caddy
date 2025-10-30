@@ -15,7 +15,11 @@ defmodule Caddy.MixProject do
       aliases: aliases(),
       package: package(),
       deps: deps(),
-      docs: docs()
+      docs: docs(),
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        plt_add_apps: [:mix]
+      ]
     ]
   end
 
@@ -38,7 +42,9 @@ defmodule Caddy.MixProject do
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:ex_doc, ">= 0.0.0", only: :docs, runtime: false},
-      {:mox, "~> 1.0", only: :test}
+      {:mox, "~> 1.0", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -65,6 +71,7 @@ defmodule Caddy.MixProject do
 
   defp aliases do
     [
+      lint: ["credo --strict", "dialyzer"],
       publish: [
         "format",
         fn _ ->
