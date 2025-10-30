@@ -56,6 +56,7 @@ defmodule Caddy do
   @doc """
   Restart Caddy Server
   """
+  @spec restart_server :: {:ok, pid()} | {:ok, :undefined} | {:error, term()}
   def restart_server do
     case Supervisor.restart_child(__MODULE__, Caddy.Server) do
       {:error, :running} ->
