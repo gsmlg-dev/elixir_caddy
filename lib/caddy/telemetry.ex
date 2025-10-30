@@ -101,7 +101,7 @@ defmodule Caddy.Telemetry do
   Returns list of all Caddy telemetry events.
   """
   @spec list_events() :: list()
-  def list_events() do
+  def list_events do
     [
       [:caddy, :config, :set],
       [:caddy, :config, :get],

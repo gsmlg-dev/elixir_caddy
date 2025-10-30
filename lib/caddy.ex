@@ -24,14 +24,14 @@ defmodule Caddy do
   Set `caddy_bin` to the path of Caddy binary file and start `Caddy.Server`.
 
   ```
-  Caddy.Cofnig.set_bin("/usr/bin/caddy")
+  Caddy.Config.set_bin("/usr/bin/caddy")
   Caddy.restart_server()
   ```
 
   This will restart server automatically
 
   ```
-  Caddy.Cofnig.set_bin!("/usr/bin/caddy")
+  Caddy.Config.set_bin!("/usr/bin/caddy")
   ```
 
   ## Config
@@ -56,7 +56,7 @@ defmodule Caddy do
   @doc """
   Restart Caddy Server
   """
-  def restart_server() do
+  def restart_server do
     case Supervisor.restart_child(__MODULE__, Caddy.Server) do
       {:error, :running} ->
         Supervisor.terminate_child(__MODULE__, Caddy.Server)
@@ -76,8 +76,8 @@ defmodule Caddy do
   @spec start(binary()) :: :ignore | {:error, any()} | {:ok, pid()}
   def start(caddy_bin), do: start_link(caddy_bin: caddy_bin)
 
-  @spec start() :: :ignore | {:error, any()} | {:ok, pid()}
-  def start() do
+  @spec start :: :ignore | {:error, any()} | {:ok, pid()}
+  def start do
     caddy_bin = System.find_executable("caddy")
     start_link(caddy_bin: caddy_bin)
   end
@@ -115,6 +115,6 @@ defmodule Caddy do
   defdelegate set_global(global), to: Caddy.ConfigProvider
   defdelegate set_additional(additionals), to: Caddy.ConfigProvider
   defdelegate set_site(name, site), to: Caddy.ConfigProvider
-  defdelegate backup_config(), to: Caddy.ConfigProvider
-  defdelegate restore_config(), to: Caddy.ConfigProvider
+  defdelegate backup_config, to: Caddy.ConfigProvider
+  defdelegate restore_config, to: Caddy.ConfigProvider
 end

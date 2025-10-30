@@ -23,7 +23,7 @@ defmodule Caddy.Admin.Api do
   GET /reverse_proxy/upstreams Returns the current status of the configured proxy upstreams
   ```
   """
-  def api(), do: nil
+  def api, do: nil
 
   @doc """
   Get info from caddy server
@@ -96,7 +96,7 @@ defmodule Caddy.Admin.Api do
   @doc """
   Stops the active configuration and exits the process
   """
-  def stop() do
+  def stop do
     start_time = System.monotonic_time()
 
     case request_module().post("/stop", "", "application/json") do
@@ -140,7 +140,7 @@ defmodule Caddy.Admin.Api do
     end
   end
 
-  def get_config() do
+  def get_config do
     start_time = System.monotonic_time()
 
     case request_module().get("/config/") do
@@ -372,7 +372,7 @@ defmodule Caddy.Admin.Api do
     end
   end
 
-  def delete_config() do
+  def delete_config do
     start_time = System.monotonic_time()
 
     case request_module().delete("/config/") do
@@ -432,7 +432,7 @@ defmodule Caddy.Admin.Api do
   Check server health status
   """
   @spec health_check() :: {:ok, map()} | {:error, binary()}
-  def health_check() do
+  def health_check do
     start_time = System.monotonic_time()
 
     case request_module().get("/config/") do
@@ -469,7 +469,7 @@ defmodule Caddy.Admin.Api do
   Get detailed server info including version and uptime
   """
   @spec server_info() :: {:ok, map()} | {:error, binary()}
-  def server_info() do
+  def server_info do
     start_time = System.monotonic_time()
 
     case request_module().get("/") do

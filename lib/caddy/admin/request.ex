@@ -120,7 +120,7 @@ defmodule Caddy.Admin.Request do
     do_recv(socket)
   end
 
-  defp get_admin_sock() do
+  defp get_admin_sock do
     Application.get_env(:caddy, :config)
     |> get_in(["admin", "listen"])
     |> String.replace(~r/^unix\//, "")
@@ -156,7 +156,8 @@ defmodule Caddy.Admin.Request do
     # Now we only have body left.
     # # Depending on headers here you may want to do different things.
     # # The response might be chunked, or upgraded in case you have attached to the container
-    # # Now I can receive the response. Because of `:active, false} I need to explicitly ask for data, otherwise it gets send to the process as messages.
+    # # Now I can receive the response. Because of `:active, false} I need to explicitly
+    # # ask for data, otherwise it gets send to the process as messages.
     case :proplists.get_value(:"Content-Type", resp.headers) do
       "application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
       _ -> {:ok, resp, read_body(socket, resp)}

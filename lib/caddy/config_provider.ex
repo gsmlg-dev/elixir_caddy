@@ -41,7 +41,7 @@ defmodule Caddy.ConfigProvider do
 
   @doc "Get current configuration"
   @spec get_config() :: Config.t()
-  def get_config() do
+  def get_config do
     start_time = System.monotonic_time()
     config = Agent.get(__MODULE__, & &1)
     duration = System.monotonic_time() - start_time
@@ -109,7 +109,7 @@ defmodule Caddy.ConfigProvider do
 
   @doc "Backup current configuration"
   @spec backup_config() :: :ok | {:error, term()}
-  def backup_config() do
+  def backup_config do
     config = get_config()
     backup_file = Config.backup_json_file()
     start_time = System.monotonic_time()
@@ -140,7 +140,7 @@ defmodule Caddy.ConfigProvider do
 
   @doc "Restore configuration from backup"
   @spec restore_config() :: {:ok, Config.t()} | {:error, term()}
-  def restore_config() do
+  def restore_config do
     backup_file = Config.backup_json_file()
     start_time = System.monotonic_time()
 
@@ -171,7 +171,7 @@ defmodule Caddy.ConfigProvider do
 
   @doc "Save current configuration"
   @spec save_config() :: :ok | {:error, term()}
-  def save_config() do
+  def save_config do
     config = get_config()
     start_time = System.monotonic_time()
 

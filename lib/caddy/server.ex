@@ -102,11 +102,11 @@ defmodule Caddy.Server do
   Get Caddyfile content of the current running server
   """
   @spec get_caddyfile() :: binary()
-  def get_caddyfile() do
+  def get_caddyfile do
     Path.expand("Caddyfile", Config.etc_path()) |> File.read!()
   end
 
-  defp bootstrap() do
+  defp bootstrap do
     Logger.debug("Caddy Server bootstrap")
     start_time = System.monotonic_time()
 
@@ -216,7 +216,7 @@ defmodule Caddy.Server do
     end
   end
 
-  defp cleanup_pidfile() do
+  defp cleanup_pidfile do
     pidfile = Config.pid_file()
 
     if pidfile |> File.exists?() do

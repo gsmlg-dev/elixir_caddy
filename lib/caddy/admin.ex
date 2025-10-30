@@ -22,7 +22,7 @@ defmodule Caddy.Admin do
     {:noreply, state}
   end
 
-  defp check_caddy_server() do
+  defp check_caddy_server do
     %{"listen" => "unix/" <> _} = Caddy.Admin.Api.get_config("admin")
   rescue
     error ->
