@@ -1,5 +1,10 @@
 defmodule Caddy.Application do
-  @moduledoc false
+  @moduledoc """
+  OTP Application for Caddy reverse proxy management.
+
+  Starts the main Caddy supervisor tree when the application starts.
+  Note: Only starts in non-test environments (see mix.exs).
+  """
 
   use Application
 

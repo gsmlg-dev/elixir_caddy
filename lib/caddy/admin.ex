@@ -1,5 +1,10 @@
 defmodule Caddy.Admin do
-  @moduledoc false
+  @moduledoc """
+  GenServer that periodically checks Caddy server health.
+
+  This module runs as a background process that checks the Caddy server
+  status every 15 seconds and logs any connection issues.
+  """
   require Logger
 
   use GenServer

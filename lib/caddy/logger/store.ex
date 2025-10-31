@@ -1,5 +1,10 @@
 defmodule Caddy.Logger.Store do
-  @moduledoc false
+  @moduledoc """
+  GenServer that stores Caddy server log history.
+
+  Maintains a rolling buffer of up to 50,000 log lines from the Caddy
+  server. Provides access to recent logs via the `tail/1` function.
+  """
 
   require Logger
 

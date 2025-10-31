@@ -1,5 +1,11 @@
 defmodule Caddy.Logger.Buffer do
-  @moduledoc false
+  @moduledoc """
+  GenServer that buffers log messages before writing to storage.
+
+  Collects log output from the Caddy server process and buffers
+  messages until complete lines are received. When newlines are
+  detected, complete log lines are flushed to the Logger.Store.
+  """
 
   use GenServer
   require Logger

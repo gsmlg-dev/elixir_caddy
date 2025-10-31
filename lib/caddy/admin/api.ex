@@ -1,5 +1,32 @@
 defmodule Caddy.Admin.Api do
-  @moduledoc false
+  @moduledoc """
+  High-level interface to the Caddy Admin API.
+
+  Provides a convenient Elixir API for interacting with Caddy's admin endpoints,
+  including configuration management, server control, and health monitoring.
+
+  ## Features
+
+  - Configuration loading and reloading
+  - Caddyfile adaptation (convert to JSON)
+  - Health checks and server information
+  - Telemetry integration for monitoring
+  - Mock support for testing via RequestBehaviour
+
+  ## Examples
+
+      # Get current configuration
+      {:ok, config} = Caddy.Admin.Api.get_config()
+
+      # Load new configuration
+      Caddy.Admin.Api.load(new_config)
+
+      # Adapt Caddyfile to JSON
+      {:ok, json_config} = Caddy.Admin.Api.adapt(caddyfile_content)
+
+      # Check server health
+      {:ok, status} = Caddy.Admin.Api.health_check()
+  """
   require Logger
 
   defp request_module, do: Application.get_env(:caddy, :request_module, Caddy.Admin.Request)

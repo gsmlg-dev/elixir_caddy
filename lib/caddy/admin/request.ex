@@ -1,5 +1,18 @@
 defmodule Caddy.Admin.Request do
-  @moduledoc false
+  @moduledoc """
+  Low-level HTTP client for Caddy Admin API over Unix domain sockets.
+
+  This module provides direct HTTP communication with the Caddy admin API
+  using Unix domain sockets. It implements the RequestBehaviour and handles
+  GET, POST, PUT, PATCH, and DELETE operations.
+
+  ## Implementation Details
+
+  - Uses `:gen_tcp` for Unix socket communication
+  - Parses HTTP responses with `:http_bin` packet mode
+  - Automatically decodes JSON responses
+  - Returns structured response with status, headers, and body
+  """
   @behaviour Caddy.Admin.RequestBehaviour
 
   alias Caddy.Admin.Request
