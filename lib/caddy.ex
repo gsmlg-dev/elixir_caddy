@@ -49,24 +49,18 @@ defmodule Caddy do
   ```
 
   """
-  require Logger
 
-  use Supervisor
+  @doc """
+  Start the Caddy supervisor as part of a supervision tree.
+  """
+  @spec start_link(Keyword.t()) :: :ignore | {:error, any()} | {:ok, pid()}
+  defdelegate start_link(args), to: Caddy.Supervisor
 
   @doc """
   Restart Caddy Server
   """
   @spec restart_server :: {:ok, pid()} | {:ok, :undefined} | {:error, term()}
-  def restart_server do
-    case Supervisor.restart_child(__MODULE__, Caddy.Server) do
-      {:error, :running} ->
-        Supervisor.terminate_child(__MODULE__, Caddy.Server)
-        Supervisor.restart_child(__MODULE__, Caddy.Server)
-
-      out ->
-        out
-    end
-  end
+  defdelegate restart_server, to: Caddy.Supervisor
 
   @doc """
   Manually Start Caddy Server.
@@ -83,34 +77,13 @@ defmodule Caddy do
     start_link(caddy_bin: caddy_bin)
   end
 
+  @doc """
+  Stop Caddy Server
+  """
   @spec stop(term()) :: :ok
-  def stop(reason \\ :normal) do
-    Supervisor.stop(__MODULE__, reason)
-  end
+  defdelegate stop(reason \\ :normal), to: Caddy.Supervisor
 
-  @spec start_link(Keyword.t()) :: :ignore | {:error, any()} | {:ok, pid()}
-  def start_link(args) do
-    Supervisor.start_link(__MODULE__, args, name: __MODULE__)
-  end
-
-  @impl true
-  @spec init(any()) ::
-          {:ok,
-           {Supervisor.sup_flags(),
-            [Supervisor.child_spec() | (old_erlang_child_spec :: :supervisor.child_spec())]}}
-  def init(args) do
-    children = [
-      {Caddy.ConfigProvider, [args]},
-      Caddy.Logger,
-      Caddy.Server
-      # Caddy.Admin
-    ]
-
-    opts = [strategy: :rest_for_one, name: __MODULE__]
-
-    Supervisor.init(children, opts)
-  end
-
+  # Configuration management functions delegated to ConfigProvider
   defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
   defdelegate set_global(global), to: Caddy.ConfigProvider

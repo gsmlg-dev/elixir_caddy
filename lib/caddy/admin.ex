@@ -32,6 +32,6 @@ defmodule Caddy.Admin do
   rescue
     error ->
       Logger.error("Caddy Admin: check_caddy_server failed #{inspect(error)}")
-      Caddy.restart_server()
+      Caddy.Supervisor.restart_server()
   end
 end

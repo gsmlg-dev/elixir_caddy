@@ -75,7 +75,7 @@ defmodule Caddy.ConfigProvider do
   @spec set_bin!(binary()) :: :ok | {:error, term()}
   def set_bin!(caddy_bin) do
     Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
-    Caddy.restart_server()
+    Caddy.Supervisor.restart_server()
   end
 
   @doc "Set global configuration"
