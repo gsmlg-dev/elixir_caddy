@@ -12,14 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        elixir: ['1.14', '1.15', '1.16', '1.17', '1.18']
-        otp: ['25', '26', '27', '28']
-        exclude:
-          # Exclude incompatible combinations
-          - elixir: '1.14'
-            otp: '28'
-          - elixir: '1.15'
-            otp: '28'
+        elixir: ['1.18', '1.19']
+        otp: ['27', '28']
 
     steps:
       - name: Checkout code
