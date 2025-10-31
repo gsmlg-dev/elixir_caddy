@@ -37,3 +37,6 @@ caddyserver-*.tar
 
 # direnv
 .direnv
+
+# ExCoveralls
+coveralls.json
