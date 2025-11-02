@@ -84,10 +84,45 @@ defmodule Caddy.ConfigProvider do
     Agent.update(__MODULE__, &Map.put(&1, :global, global))
   end
 
-  @doc "Set additional configuration blocks"
+  @doc "Set a snippet configuration"
+  @spec set_snippet(binary(), Caddy.Config.Snippet.t()) :: :ok
+  def set_snippet(name, %Caddy.Config.Snippet{} = snippet) when is_binary(name) do
+    Agent.update(
+      __MODULE__,
+      &Map.update(&1, :snippets, %{}, fn snippets -> Map.put(snippets, name, snippet) end)
+    )
+  end
+
+  @doc "Get a snippet by name"
+  @spec get_snippet(binary()) :: Caddy.Config.Snippet.t() | nil
+  def get_snippet(name) when is_binary(name) do
+    Agent.get(__MODULE__, fn config -> Map.get(config.snippets, name) end)
+  end
+
+  @doc "Remove a snippet by name"
+  @spec remove_snippet(binary()) :: :ok
+  def remove_snippet(name) when is_binary(name) do
+    Agent.update(__MODULE__, fn config ->
+      Map.update(config, :snippets, %{}, fn snippets -> Map.delete(snippets, name) end)
+    end)
+  end
+
+  @doc "Get all snippets"
+  @spec get_snippets() :: %{binary() => Caddy.Config.Snippet.t()}
+  def get_snippets do
+    Agent.get(__MODULE__, fn config -> config.snippets end)
+  end
+
+  @doc """
+  Set additional configuration blocks.
+
+  Deprecated: Use set_snippet/2 instead for snippet-based configuration.
+  """
+  @deprecated "Use set_snippet/2 instead"
   @spec set_additional([Config.caddyfile()]) :: :ok
-  def set_additional(additionals) do
-    Agent.update(__MODULE__, &Map.put(&1, :additional, additionals))
+  def set_additional(_additionals) do
+    Logger.warning("set_additional/1 is deprecated. Use set_snippet/2 instead.")
+    :ok
   end
 
   @doc "Set site configuration"

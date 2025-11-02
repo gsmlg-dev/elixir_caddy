@@ -7,11 +7,14 @@ defmodule Caddy.Config do
 
   require Logger
 
+  alias Caddy.Config.{Global, Site, Snippet}
+
   @type t :: %__MODULE__{
+          version: binary(),
           bin: binary() | nil,
-          global: binary(),
-          additional: [binary()],
-          sites: map(),
+          global: Global.t() | binary(),
+          snippets: %{binary() => Snippet.t()},
+          sites: %{binary() => Site.t() | site_config()},
           env: list({binary(), binary()})
         }
 
@@ -20,8 +23,8 @@ defmodule Caddy.Config do
   @type site_listen :: binary()
   @type site_config :: caddyfile() | {site_listen(), caddyfile()}
 
-  @derive {Jason.Encoder, only: [:bin, :global, :additional, :sites, :env]}
-  defstruct bin: nil, global: "", additional: [], sites: %{}, env: []
+  @derive {Jason.Encoder, only: [:version, :bin, :global, :snippets, :sites, :env]}
+  defstruct version: "2.0", bin: nil, global: "", snippets: %{}, sites: %{}, env: []
 
   # Path utilities
   defdelegate user_home, to: System
@@ -222,32 +225,14 @@ defmodule Caddy.Config do
     )
   end
 
-  @doc "Convert config to caddyfile"
+  @doc """
+  Convert config to caddyfile.
+
+  Delegates to the Caddyfile protocol implementation.
+  """
   @spec to_caddyfile(t()) :: caddyfile()
-  def to_caddyfile(%__MODULE__{global: global, additional: additional, sites: sites}) do
-    """
-    {
-    #{global}
-    }
-
-    #{Enum.join(additional, "\n\n")}
-
-    #{Enum.map_join(sites, "\n\n", fn
-      {name, site} when is_binary(site) -> """
-        ## #{name}
-        #{name} {
-          #{site}
-        }
-        """
-      {name, {listen, site}} when is_binary(site) -> """
-        ## #{name}
-        #{listen} {
-          #{site}
-        }
-        """
-      _ -> ""
-    end)}
-    """
+  def to_caddyfile(config) do
+    Caddy.Caddyfile.to_caddyfile(config)
   end
 
   @doc "Validate Caddy binary path"
@@ -308,7 +293,7 @@ defmodule Caddy.Config do
   @spec validate_config(t()) :: :ok | {:error, binary()}
   def validate_config(%__MODULE__{} = config) do
     cond do
-      not is_binary(config.global) or not is_list(config.additional) or not is_map(config.sites) or
+      not is_binary(config.global) or not is_map(config.snippets) or not is_map(config.sites) or
           not is_list(config.env) ->
         {:error, "invalid configuration structure"}
 
@@ -431,14 +416,112 @@ defmodule Caddy.Config do
     ]
   end
 
-  @deprecated "user Caddy.set_bin/1 instead"
+  # Deprecated delegates - kept for backward compatibility
+  @deprecated "use Caddy.set_bin/1 instead"
   defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
-  @deprecated "user Caddy.set_bin/1 instead"
+  @deprecated "use Caddy.set_bin/1 instead"
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
-  @deprecated "user Caddy.set_global/1 instead"
+  @deprecated "use Caddy.set_global/1 instead"
   defdelegate set_global(global), to: Caddy.ConfigProvider
-  @deprecated "user Caddy.set_additional/1 instead"
+  @deprecated "use Caddy.set_additional/1 instead"
   defdelegate set_additional(additionals), to: Caddy.ConfigProvider
-  @deprecated "user Caddy.set_site/2 instead"
+  @deprecated "use Caddy.set_site/2 instead"
   defdelegate set_site(name, site), to: Caddy.ConfigProvider
 end
+
+defimpl Caddy.Caddyfile, for: Caddy.Config do
+  @moduledoc """
+  Caddyfile protocol implementation for root Config.
+
+  Renders a complete Caddyfile with:
+  1. Global configuration block
+  2. Snippets (reusable blocks)
+  3. Sites (virtual hosts)
+
+  Supports both new struct-based config and legacy string-based config
+  for backward compatibility.
+  """
+
+  alias Caddy.Caddyfile
+  alias Caddy.Config.{Global, Site, Snippet}
+
+  def to_caddyfile(config) do
+    parts = []
+
+    # 1. Global block
+    global_text = render_global(config.global)
+    parts = if global_text != "", do: [global_text | parts], else: parts
+
+    # 2. Snippets
+    snippet_blocks =
+      config.snippets
+      |> Enum.sort_by(fn {name, _} -> name end)
+      |> Enum.map(fn {_name, snippet} -> Caddyfile.to_caddyfile(snippet) end)
+
+    parts = parts ++ snippet_blocks
+
+    # 3. Sites
+    site_blocks =
+      config.sites
+      |> Enum.sort_by(fn {name, _} -> name end)
+      |> Enum.map(fn {name, site} -> render_site(name, site) end)
+      |> Enum.filter(&(&1 != ""))
+
+    parts = parts ++ site_blocks
+
+    # Join all parts with double newline
+    Enum.reverse(parts) |> Enum.join("\n\n") |> String.trim()
+  end
+
+  # Render global config (supports both new Global struct and legacy string)
+  defp render_global(%Global{} = global), do: Caddyfile.to_caddyfile(global)
+
+  defp render_global(str) when is_binary(str) and str != "" do
+    # Legacy string-based global config
+    """
+    {
+    #{str}
+    }
+    """
+    |> String.trim()
+  end
+
+  defp render_global(_), do: ""
+
+  # Render site config (supports both new Site struct and legacy formats)
+  defp render_site(_name, %Site{} = site) do
+    Caddyfile.to_caddyfile(site)
+  end
+
+  # Legacy: string-based site config
+  defp render_site(name, site) when is_binary(site) do
+    """
+    #{name} {
+      #{indent(site)}
+    }
+    """
+    |> String.trim()
+  end
+
+  # Legacy: tuple-based site config {listen, config}
+  defp render_site(_name, {listen, site}) when is_binary(site) do
+    """
+    #{listen} {
+      #{indent(site)}
+    }
+    """
+    |> String.trim()
+  end
+
+  defp render_site(_, _), do: ""
+
+  defp indent(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      if String.trim(line) == "", do: "", else: "  #{line}"
+    end)
+    |> Enum.join("\n")
+  end
+end
+

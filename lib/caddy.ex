@@ -87,8 +87,17 @@ defmodule Caddy do
   defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
   defdelegate set_global(global), to: Caddy.ConfigProvider
-  defdelegate set_additional(additionals), to: Caddy.ConfigProvider
   defdelegate set_site(name, site), to: Caddy.ConfigProvider
   defdelegate backup_config, to: Caddy.ConfigProvider
   defdelegate restore_config, to: Caddy.ConfigProvider
+
+  # Snippet management functions
+  defdelegate set_snippet(name, snippet), to: Caddy.ConfigProvider
+  defdelegate get_snippet(name), to: Caddy.ConfigProvider
+  defdelegate remove_snippet(name), to: Caddy.ConfigProvider
+  defdelegate get_snippets, to: Caddy.ConfigProvider
+
+  # Deprecated functions
+  @deprecated "Use set_snippet/2 instead"
+  defdelegate set_additional(additionals), to: Caddy.ConfigProvider
 end
