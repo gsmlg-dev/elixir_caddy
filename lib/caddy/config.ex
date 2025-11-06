@@ -108,7 +108,12 @@ defmodule Caddy.Config do
           {:cont, true}
 
         {:error, reason} ->
-          Logger.error("Failed to create directory #{path}: #{inspect(reason)}")
+          Caddy.Telemetry.log_error("Failed to create directory #{path}: #{inspect(reason)}",
+            module: __MODULE__,
+            path: path,
+            error: reason
+          )
+
           {:halt, false}
       end
     end)
@@ -176,7 +181,12 @@ defmodule Caddy.Config do
                 exit_code: non_zero
               })
 
-              Logger.error("Caddy command failed with exit code #{non_zero}: #{error_output}")
+              Caddy.Telemetry.log_error("Caddy command failed with exit code #{non_zero}: #{error_output}",
+                module: __MODULE__,
+                exit_code: non_zero,
+                error_output: error_output
+              )
+
               {:error, {:caddy_error, non_zero, error_output}}
 
             error ->
@@ -186,7 +196,11 @@ defmodule Caddy.Config do
                 error: inspect(error)
               })
 
-              Logger.error("Caddy adaptation failed: #{inspect(error)}")
+              Caddy.Telemetry.log_error("Caddy adaptation failed: #{inspect(error)}",
+                module: __MODULE__,
+                error: error
+              )
+
               error
           end
         rescue
@@ -197,7 +211,11 @@ defmodule Caddy.Config do
               error: "File operation error"
             })
 
-            Logger.error("File operation error: #{inspect(e)}")
+            Caddy.Telemetry.log_error("File operation error: #{inspect(e)}",
+              module: __MODULE__,
+              error: e
+            )
+
             {:error, {:file_error, e}}
 
           e in Jason.DecodeError ->
@@ -207,7 +225,11 @@ defmodule Caddy.Config do
               error: "JSON decode error"
             })
 
-            Logger.error("JSON decode error: #{inspect(e)}")
+            Caddy.Telemetry.log_error("JSON decode error: #{inspect(e)}",
+              module: __MODULE__,
+              error: e
+            )
+
             {:error, {:json_error, e}}
         after
           if File.exists?(tmp_config), do: File.rm(tmp_config)
@@ -318,7 +340,11 @@ defmodule Caddy.Config do
       config
     else
       error ->
-        Logger.error("Error parsing caddyfile: #{inspect(error)}")
+        Caddy.Telemetry.log_error("Error parsing caddyfile: #{inspect(error)}",
+          module: __MODULE__,
+          error: error
+        )
+
         %{}
     end
   end
@@ -392,7 +418,11 @@ defmodule Caddy.Config do
         %{}
 
       {:error, reason} ->
-        Logger.warning("Failed to read saved configuration: #{inspect(reason)}")
+        Caddy.Telemetry.log_warning("Failed to read saved configuration: #{inspect(reason)}",
+          module: __MODULE__,
+          error: reason
+        )
+
         %{}
     end
   end

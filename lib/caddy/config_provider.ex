@@ -121,7 +121,10 @@ defmodule Caddy.ConfigProvider do
   @deprecated "Use set_snippet/2 instead"
   @spec set_additional([Config.caddyfile()]) :: :ok
   def set_additional(_additionals) do
-    Logger.warning("set_additional/1 is deprecated. Use set_snippet/2 instead.")
+    Caddy.Telemetry.log_warning("set_additional/1 is deprecated. Use set_snippet/2 instead.",
+      module: __MODULE__
+    )
+
     :ok
   end
 
@@ -272,7 +275,10 @@ defmodule Caddy.ConfigProvider do
         config
 
       {:error, reason} ->
-        Logger.warning("Invalid saved configuration: #{reason}, using defaults")
+        Caddy.Telemetry.log_warning("Invalid saved configuration: #{reason}, using defaults",
+          module: __MODULE__,
+          error: reason
+        )
 
         %Config{
           env: Config.init_env(),
