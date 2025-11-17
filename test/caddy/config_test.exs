@@ -13,7 +13,7 @@ defmodule Caddy.ConfigTest do
       config = %Config{
         bin: "/usr/bin/caddy",
         global: "debug",
-        additional: [],
+        snippets: %{},
         sites: %{"test" => "reverse_proxy localhost:3000"},
         env: [{"KEY", "value"}]
       }
@@ -111,7 +111,9 @@ defmodule Caddy.ConfigTest do
     test "to_caddyfile generates valid caddyfile" do
       config = %Config{
         global: "debug",
-        additional: ["metrics :2020"],
+        snippets: %{
+          "metrics" => %Caddy.Config.Snippet{name: "metrics", content: "metrics :2020"}
+        },
         sites: %{
           "test" => "reverse_proxy localhost:3000",
           "proxy" => {":8080", "reverse_proxy localhost:3128"}
@@ -120,16 +122,18 @@ defmodule Caddy.ConfigTest do
 
       caddyfile = Config.to_caddyfile(config)
       assert String.contains?(caddyfile, "debug")
+      assert String.contains?(caddyfile, "(metrics)")
       assert String.contains?(caddyfile, "metrics :2020")
-      assert String.contains?(caddyfile, "## test")
-      assert String.contains?(caddyfile, "## proxy")
+      assert String.contains?(caddyfile, "test {")
+      assert String.contains?(caddyfile, ":8080 {")
     end
 
     test "to_caddyfile handles empty configuration" do
       config = %Config{}
       caddyfile = Config.to_caddyfile(config)
       assert is_binary(caddyfile)
-      assert String.contains?(caddyfile, "{")
+      # Empty config produces empty string with new protocol
+      assert caddyfile == ""
     end
   end
 
@@ -199,7 +203,7 @@ defmodule Caddy.ConfigTest do
       assert is_binary(config.global)
       assert is_list(config.env)
       assert is_map(config.sites)
-      assert is_list(config.additional)
+      assert is_map(config.snippets)
     end
   end
 

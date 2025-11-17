@@ -63,8 +63,90 @@ defmodule Caddy.Telemetry do
   end
 
   @doc """
+  Emits a telemetry event for logging operations.
+  """
+  @spec emit_log_event(atom(), map(), keyword() | map()) :: :ok
+  def emit_log_event(level, measurements \\ %{}, metadata \\ []) do
+    metadata = Map.new(metadata)
+    :telemetry.execute([:caddy, :log, level], measurements, metadata)
+  end
+
+  @doc """
+  Emits a debug level log event.
+
+  ## Examples
+
+      Caddy.Telemetry.log_debug("Server starting", module: __MODULE__)
+  """
+  @spec log_debug(String.t(), keyword() | map()) :: :ok
+  def log_debug(message, metadata \\ []) do
+    metadata =
+      metadata
+      |> Map.new()
+      |> Map.put(:message, message)
+      |> Map.put(:level, :debug)
+
+    emit_log_event(:debug, %{timestamp: System.system_time()}, metadata)
+  end
+
+  @doc """
+  Emits an info level log event.
+
+  ## Examples
+
+      Caddy.Telemetry.log_info("Configuration loaded", config_size: 10)
+  """
+  @spec log_info(String.t(), keyword() | map()) :: :ok
+  def log_info(message, metadata \\ []) do
+    metadata =
+      metadata
+      |> Map.new()
+      |> Map.put(:message, message)
+      |> Map.put(:level, :info)
+
+    emit_log_event(:info, %{timestamp: System.system_time()}, metadata)
+  end
+
+  @doc """
+  Emits a warning level log event.
+
+  ## Examples
+
+      Caddy.Telemetry.log_warning("Deprecated function used", function: :old_api)
+  """
+  @spec log_warning(String.t(), keyword() | map()) :: :ok
+  def log_warning(message, metadata \\ []) do
+    metadata =
+      metadata
+      |> Map.new()
+      |> Map.put(:message, message)
+      |> Map.put(:level, :warning)
+
+    emit_log_event(:warning, %{timestamp: System.system_time()}, metadata)
+  end
+
+  @doc """
+  Emits an error level log event.
+
+  ## Examples
+
+      Caddy.Telemetry.log_error("Failed to start server", error: reason)
+  """
+  @spec log_error(String.t(), keyword() | map()) :: :ok
+  def log_error(message, metadata \\ []) do
+    metadata =
+      metadata
+      |> Map.new()
+      |> Map.put(:message, message)
+      |> Map.put(:level, :error)
+
+    emit_log_event(:error, %{timestamp: System.system_time()}, metadata)
+  end
+
+  @doc """
   Starts telemetry poller for periodic metrics.
   """
+  @dialyzer {:nowarn_function, start_poller: 0, start_poller: 1}
   @spec start_poller(non_neg_integer()) :: {:ok, pid()} | {:error, term()} | :ignore
   def start_poller(interval_ms \\ 30_000) do
     measurements = %{
@@ -123,6 +205,15 @@ defmodule Caddy.Telemetry do
       [:caddy, :file, :delete],
       [:caddy, :adapt, :success],
       [:caddy, :adapt, :error],
+      [:caddy, :log, :received],
+      [:caddy, :log, :buffered],
+      [:caddy, :log, :buffer_flush],
+      [:caddy, :log, :stored],
+      [:caddy, :log, :retrieved],
+      [:caddy, :log, :debug],
+      [:caddy, :log, :info],
+      [:caddy, :log, :warning],
+      [:caddy, :log, :error],
       [:caddy, :system, :memory],
       [:caddy, :system, :process_count],
       [:caddy, :system, :uptime]

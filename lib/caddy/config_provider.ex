@@ -75,7 +75,7 @@ defmodule Caddy.ConfigProvider do
   @spec set_bin!(binary()) :: :ok | {:error, term()}
   def set_bin!(caddy_bin) do
     Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
-    Caddy.restart_server()
+    Caddy.Supervisor.restart_server()
   end
 
   @doc "Set global configuration"
@@ -84,10 +84,49 @@ defmodule Caddy.ConfigProvider do
     Agent.update(__MODULE__, &Map.put(&1, :global, global))
   end
 
-  @doc "Set additional configuration blocks"
+  @doc "Set a snippet configuration"
+  @spec set_snippet(binary(), Caddy.Config.Snippet.t()) :: :ok
+  def set_snippet(name, %Caddy.Config.Snippet{} = snippet) when is_binary(name) do
+    Agent.update(
+      __MODULE__,
+      &Map.update(&1, :snippets, %{}, fn snippets -> Map.put(snippets, name, snippet) end)
+    )
+  end
+
+  @doc "Get a snippet by name"
+  @spec get_snippet(binary()) :: Caddy.Config.Snippet.t() | nil
+  def get_snippet(name) when is_binary(name) do
+    Agent.get(__MODULE__, fn config -> Map.get(config.snippets, name) end)
+  end
+
+  @doc "Remove a snippet by name"
+  @spec remove_snippet(binary()) :: :ok
+  def remove_snippet(name) when is_binary(name) do
+    Agent.update(__MODULE__, fn config ->
+      Map.update(config, :snippets, %{}, fn snippets -> Map.delete(snippets, name) end)
+    end)
+  end
+
+  @doc "Get all snippets"
+  @spec get_snippets() :: %{binary() => Caddy.Config.Snippet.t()}
+  def get_snippets do
+    Agent.get(__MODULE__, fn config -> config.snippets end)
+  end
+
+  @doc """
+  Set additional configuration blocks.
+
+  **Deprecated:** This function is deprecated. Use `set_snippet/2` instead for snippet-based configuration.
+
+  This function now only logs a deprecation warning and does nothing else.
+  """
   @spec set_additional([Config.caddyfile()]) :: :ok
-  def set_additional(additionals) do
-    Agent.update(__MODULE__, &Map.put(&1, :additional, additionals))
+  def set_additional(_additionals) do
+    Caddy.Telemetry.log_warning("set_additional/1 is deprecated. Use set_snippet/2 instead.",
+      module: __MODULE__
+    )
+
+    :ok
   end
 
   @doc "Set site configuration"
@@ -200,7 +239,7 @@ defmodule Caddy.ConfigProvider do
   end
 
   @doc "Initialize configuration"
-  @spec init(keyword()) :: %Config{}
+  @spec init(keyword()) :: Config.t()
   def init(args) do
     bin =
       cond do
@@ -237,7 +276,10 @@ defmodule Caddy.ConfigProvider do
         config
 
       {:error, reason} ->
-        Logger.warning("Invalid saved configuration: #{reason}, using defaults")
+        Caddy.Telemetry.log_warning("Invalid saved configuration: #{reason}, using defaults",
+          module: __MODULE__,
+          error: reason
+        )
 
         %Config{
           env: Config.init_env(),

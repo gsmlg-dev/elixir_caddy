@@ -36,14 +36,11 @@ defmodule Caddy.Server do
             {:ok, state, {:continue, :start}}
 
           {:error, reason} ->
-            Logger.warning("""
-            Caddy Server initialization failed: #{reason}
-
-            To fix this issue:
-            - If binary not found: `Caddy.Config.set_bin("/path/to/caddy")`
-            - Then restart: `Caddy.restart_server()`
-            - Check configuration for syntax errors
-            """)
+            Caddy.Telemetry.log_warning(
+              "Caddy Server initialization failed: #{reason}\n\nTo fix this issue:\n- If binary not found: `Caddy.Config.set_bin(\"/path/to/caddy\")`\n- Then restart: `Caddy.restart_server()`\n- Check configuration for syntax errors",
+              module: __MODULE__,
+              error: reason
+            )
 
             :ignore
         end
@@ -53,7 +50,7 @@ defmodule Caddy.Server do
   @doc false
   @impl true
   def handle_continue(:start, state) do
-    Logger.debug("Caddy Server Starting")
+    Caddy.Telemetry.log_debug("Caddy Server Starting", module: __MODULE__)
     start_time = System.monotonic_time()
     config = ConfigProvider.get_config()
     port = port_start(config)
@@ -65,13 +62,24 @@ defmodule Caddy.Server do
 
   @impl true
   def handle_info({_port, {:data, msg}}, %{dump_log: dump_log} = state) do
+    # Emit log received event
+    Caddy.Telemetry.emit_log_event(
+      :received,
+      %{size: byte_size(msg)},
+      %{source: :caddy_process}
+    )
+
     Caddy.Logger.write_buffer(msg)
     if dump_log, do: IO.puts(msg)
     {:noreply, state}
   end
 
   def handle_info({port, {:exit_status, exit_status}}, state) do
-    Logger.warning("Caddy#{inspect(port)}: exit_status: #{exit_status}")
+    Caddy.Telemetry.log_warning("Caddy#{inspect(port)}: exit_status: #{exit_status}",
+      module: __MODULE__,
+      exit_status: exit_status,
+      port: inspect(port)
+    )
 
     Caddy.Telemetry.emit_server_event(:exit, %{}, %{exit_status: exit_status, port: inspect(port)})
 
@@ -81,7 +89,7 @@ defmodule Caddy.Server do
 
   # handle the trapped exit call
   def handle_info({:EXIT, _from, reason}, state) do
-    Logger.debug("Caddy.Server exiting")
+    Caddy.Telemetry.log_debug("Caddy.Server exiting", module: __MODULE__, reason: reason)
     Caddy.Telemetry.emit_server_event(:shutdown, %{}, %{reason: reason})
     cleanup(reason, state)
     {:stop, reason, state}
@@ -90,7 +98,7 @@ defmodule Caddy.Server do
   # handle termination
   @impl true
   def terminate(reason, state) do
-    Logger.debug("Caddy.Server terminating")
+    Caddy.Telemetry.log_debug("Caddy.Server terminating", module: __MODULE__, reason: reason)
     start_time = System.monotonic_time()
     cleanup(reason, state)
     duration = System.monotonic_time() - start_time
@@ -107,7 +115,7 @@ defmodule Caddy.Server do
   end
 
   defp bootstrap do
-    Logger.debug("Caddy Server bootstrap")
+    Caddy.Telemetry.log_debug("Caddy Server bootstrap", module: __MODULE__)
     start_time = System.monotonic_time()
 
     with {:ensure_path_exists, true} <- {:ensure_path_exists, Config.ensure_path_exists()},
@@ -167,7 +175,11 @@ defmodule Caddy.Server do
           error: inspect(error)
         })
 
-        Logger.error("Caddy Server bootstrap error: #{inspect(error)}")
+        Caddy.Telemetry.log_error("Caddy Server bootstrap error: #{inspect(error)}",
+          module: __MODULE__,
+          error: error
+        )
+
         {:error, error}
     end
   end
@@ -202,7 +214,11 @@ defmodule Caddy.Server do
       {:ok, Config.init_file()}
     else
       error ->
-        Logger.error("[init_config_file] error: #{inspect(error)}")
+        Caddy.Telemetry.log_error("[init_config_file] error: #{inspect(error)}",
+          module: __MODULE__,
+          error: error
+        )
+
         {:error, error}
     end
   end
@@ -214,7 +230,11 @@ defmodule Caddy.Server do
       pid = pidfile |> File.read!() |> String.trim()
 
       if Regex.match?(~r/\d+/, pid) do
-        Logger.debug("Caddy pidfile exists: `kill -9 #{pid}`")
+        Caddy.Telemetry.log_debug("Caddy pidfile exists: `kill -9 #{pid}`",
+          module: __MODULE__,
+          pid: pid
+        )
+
         System.cmd("kill", ["-9", "#{pid}"])
       end
 
