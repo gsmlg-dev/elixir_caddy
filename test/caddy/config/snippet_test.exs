@@ -52,11 +52,12 @@ defmodule Caddy.Config.SnippetTest do
     end
 
     test "preserves argument placeholders" do
-      snippet = Snippet.new("log-zone", """
-      log {
-        output file /srv/logs/{args[0]}/{args[1]}/access.log
-      }
-      """)
+      snippet =
+        Snippet.new("log-zone", """
+        log {
+          output file /srv/logs/{args[0]}/{args[1]}/access.log
+        }
+        """)
 
       result = Caddyfile.to_caddyfile(snippet)
 

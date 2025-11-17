@@ -181,7 +181,8 @@ defmodule Caddy.Config do
                 exit_code: non_zero
               })
 
-              Caddy.Telemetry.log_error("Caddy command failed with exit code #{non_zero}: #{error_output}",
+              Caddy.Telemetry.log_error(
+                "Caddy command failed with exit code #{non_zero}: #{error_output}",
                 module: __MODULE__,
                 exit_code: non_zero,
                 error_output: error_output
@@ -453,7 +454,7 @@ defmodule Caddy.Config do
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
   @deprecated "use Caddy.set_global/1 instead"
   defdelegate set_global(global), to: Caddy.ConfigProvider
-  @deprecated "use Caddy.set_additional/1 instead"
+  # Note: set_additional is deprecated - use Caddy.set_snippet/2 instead
   defdelegate set_additional(additionals), to: Caddy.ConfigProvider
   @deprecated "use Caddy.set_site/2 instead"
   defdelegate set_site(name, site), to: Caddy.ConfigProvider
@@ -554,4 +555,3 @@ defimpl Caddy.Caddyfile, for: Caddy.Config do
     |> Enum.join("\n")
   end
 end
-

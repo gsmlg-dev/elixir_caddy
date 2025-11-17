@@ -32,11 +32,9 @@ defmodule Caddy.Config.Import do
           args: [String.t()]
         }
 
-  defstruct [
-    snippet: nil,
-    path: nil,
-    args: []
-  ]
+  defstruct snippet: nil,
+            path: nil,
+            args: []
 
   @doc """
   Create an import directive for a snippet.

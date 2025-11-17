@@ -96,10 +96,10 @@ defmodule Caddy.Logger.Handler do
     message = metadata[:message] || "(no message)"
 
     case level do
-      :debug -> Logger.debug(message, metadata: [caddy: true])
-      :info -> Logger.info(message, metadata: [caddy: true])
-      :warning -> Logger.warning(message, metadata: [caddy: true])
-      :error -> Logger.error(message, metadata: [caddy: true])
+      :debug -> Logger.debug(message, caddy: true)
+      :info -> Logger.info(message, caddy: true)
+      :warning -> Logger.warning(message, caddy: true)
+      :error -> Logger.error(message, caddy: true)
     end
   end
 end

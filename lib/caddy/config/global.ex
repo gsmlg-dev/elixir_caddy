@@ -34,14 +34,12 @@ defmodule Caddy.Config.Global do
           extra_options: [String.t()]
         }
 
-  defstruct [
-    admin: nil,
-    debug: false,
-    email: nil,
-    acme_ca: nil,
-    storage: nil,
-    extra_options: []
-  ]
+  defstruct admin: nil,
+            debug: false,
+            email: nil,
+            acme_ca: nil,
+            storage: nil,
+            extra_options: []
 
   @doc """
   Create a new global configuration with defaults.
@@ -92,7 +90,7 @@ defimpl Caddy.Caddyfile, for: Caddy.Config.Global do
     else
       options_text =
         options
-        |> Enum.map(&("  #{&1}"))
+        |> Enum.map(&"  #{&1}")
         |> Enum.join("\n")
 
       """

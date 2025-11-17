@@ -116,9 +116,10 @@ defmodule Caddy.ConfigProvider do
   @doc """
   Set additional configuration blocks.
 
-  Deprecated: Use set_snippet/2 instead for snippet-based configuration.
+  **Deprecated:** This function is deprecated. Use `set_snippet/2` instead for snippet-based configuration.
+
+  This function now only logs a deprecation warning and does nothing else.
   """
-  @deprecated "Use set_snippet/2 instead"
   @spec set_additional([Config.caddyfile()]) :: :ok
   def set_additional(_additionals) do
     Caddy.Telemetry.log_warning("set_additional/1 is deprecated. Use set_snippet/2 instead.",
@@ -238,7 +239,7 @@ defmodule Caddy.ConfigProvider do
   end
 
   @doc "Initialize configuration"
-  @spec init(keyword()) :: %Config{}
+  @spec init(keyword()) :: Config.t()
   def init(args) do
     bin =
       cond do

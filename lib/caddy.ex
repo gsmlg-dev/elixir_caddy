@@ -97,7 +97,6 @@ defmodule Caddy do
   defdelegate remove_snippet(name), to: Caddy.ConfigProvider
   defdelegate get_snippets, to: Caddy.ConfigProvider
 
-  # Deprecated functions
-  @deprecated "Use set_snippet/2 instead"
+  # Deprecated functions - deprecation warning is in ConfigProvider implementation
   defdelegate set_additional(additionals), to: Caddy.ConfigProvider
 end
