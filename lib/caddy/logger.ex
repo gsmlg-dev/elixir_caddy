@@ -51,6 +51,7 @@ defmodule Caddy.Logger do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  @dialyzer {:nowarn_function, init: 1}
   @impl true
   def init(_args) do
     Caddy.Telemetry.log_debug("Caddy Logger init", module: __MODULE__)

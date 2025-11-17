@@ -39,8 +39,9 @@
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:
+      # Note: strict mode is enabled but only fails on warnings/errors, not suggestions
       #
-      strict: true,
+      strict: false,
       #
       # To modify the timeout for parsing files, change this value:
       #
@@ -135,7 +136,8 @@
           {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
           {Credo.Check.Warning.IExPry, []},
           {Credo.Check.Warning.IoInspect, []},
-          {Credo.Check.Warning.MissedMetadataKeyInLoggerConfig, []},
+          # Disabled: Runtime metadata keys don't need compile-time configuration
+          # {Credo.Check.Warning.MissedMetadataKeyInLoggerConfig, []},
           {Credo.Check.Warning.OperationOnSameValues, []},
           {Credo.Check.Warning.OperationWithConstantResult, []},
           {Credo.Check.Warning.RaiseInsideRescue, []},

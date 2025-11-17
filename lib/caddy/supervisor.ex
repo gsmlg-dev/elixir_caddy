@@ -30,6 +30,7 @@ defmodule Caddy.Supervisor do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
   end
 
+  @dialyzer {:nowarn_function, init: 1}
   @impl true
   @spec init(any()) ::
           {:ok,

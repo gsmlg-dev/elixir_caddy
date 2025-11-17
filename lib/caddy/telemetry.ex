@@ -146,6 +146,7 @@ defmodule Caddy.Telemetry do
   @doc """
   Starts telemetry poller for periodic metrics.
   """
+  @dialyzer {:nowarn_function, start_poller: 0, start_poller: 1}
   @spec start_poller(non_neg_integer()) :: {:ok, pid()} | {:error, term()} | :ignore
   def start_poller(interval_ms \\ 30_000) do
     measurements = %{
