@@ -16,7 +16,7 @@ defmodule Caddy.Admin do
   end
 
   def init(_) do
-    Logger.debug("Caddy Admin init")
+    Caddy.Telemetry.log_debug("Caddy Admin init", module: __MODULE__)
     Process.send_after(self(), :check_server, @check_interval)
     {:ok, %{}}
   end
@@ -31,7 +31,11 @@ defmodule Caddy.Admin do
     %{"listen" => "unix/" <> _} = Caddy.Admin.Api.get_config("admin")
   rescue
     error ->
-      Logger.error("Caddy Admin: check_caddy_server failed #{inspect(error)}")
-      Caddy.restart_server()
+      Caddy.Telemetry.log_error("Caddy Admin: check_caddy_server failed #{inspect(error)}",
+        module: __MODULE__,
+        error: error
+      )
+
+      Caddy.Supervisor.restart_server()
   end
 end

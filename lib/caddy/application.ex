@@ -11,7 +11,7 @@ defmodule Caddy.Application do
   @impl true
   def start(_type, args) do
     children = [
-      {Caddy, args}
+      {Caddy.Supervisor, args}
     ]
 
     opts = [strategy: :one_for_one, name: Caddy.Application]
