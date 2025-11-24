@@ -157,5 +157,25 @@ The library emits telemetry events for monitoring:
 - File operations: `[:caddy, :file, :read]`, `[:caddy, :file, :write]`
 - Validation: `[:caddy, :validation, :success]`, `[:caddy, :validation, :error]`
 - Adaptation: `[:caddy, :adapt, :success]`, `[:caddy, :adapt, :error]`
+- Logging operations: `[:caddy, :log, :debug]`, `[:caddy, :log, :info]`, `[:caddy, :log, :warning]`, `[:caddy, :log, :error]`
+- Log buffer/store: `[:caddy, :log, :received]`, `[:caddy, :log, :buffered]`, `[:caddy, :log, :buffer_flush]`, `[:caddy, :log, :stored]`, `[:caddy, :log, :retrieved]`
+
+### Telemetry-Based Logging
+
+All logging throughout the codebase uses telemetry events instead of direct Logger calls:
+
+```elixir
+# Application code uses telemetry for logging
+Caddy.Telemetry.log_debug("Server starting", module: __MODULE__)
+Caddy.Telemetry.log_info("Configuration loaded", config_id: 123)
+Caddy.Telemetry.log_warning("Deprecation notice", function: "old_api")
+Caddy.Telemetry.log_error("Operation failed", reason: :timeout)
+```
+
+A default handler (`Caddy.Logger.Handler`) automatically forwards log events to Elixir's Logger. This can be disabled:
+
+```elixir
+config :caddy, attach_default_handler: false
+```
 
 Use `Caddy.Telemetry.list_events/0` to see all available events.
