@@ -27,7 +27,9 @@ jobs:
 
       - name: Download Caddy
         run: |
-          curl -L "https://github.com/caddyserver/caddy/releases/latest/download/caddy_$(curl -s https://api.github.com/repos/caddyserver/caddy/releases/latest | grep -oP '\"tag_name\": \"v\K[0-9.]+')_linux_amd64.tar.gz" -o caddy.tar.gz
+          CADDY_VERSION=$(curl -sL https://api.github.com/repos/caddyserver/caddy/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          echo "Downloading Caddy version: $CADDY_VERSION"
+          curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" -o caddy.tar.gz
           tar -xzf caddy.tar.gz
           sudo mv caddy /usr/bin/caddy
           sudo chmod +x /usr/bin/caddy
