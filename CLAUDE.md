@@ -179,3 +179,10 @@ config :caddy, attach_default_handler: false
 ```
 
 Use `Caddy.Telemetry.list_events/0` to see all available events.
+
+## Active Technologies
+- Elixir ~> 1.18, OTP 27+ + Jason (JSON), Telemetry (observability), Mox (testing) (001-expand-global-config)
+- N/A (in-memory configuration structs) (001-expand-global-config)
+
+## Recent Changes
+- 001-expand-global-config: Added Elixir ~> 1.18, OTP 27+ + Jason (JSON), Telemetry (observability), Mox (testing)
