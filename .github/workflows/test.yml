@@ -26,8 +26,15 @@ jobs:
           otp-version: ${{ matrix.otp }}
 
       - name: Download Caddy
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          CADDY_VERSION=$(curl -sL https://api.github.com/repos/caddyserver/caddy/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          # Use GitHub CLI with authentication to avoid rate limits
+          CADDY_VERSION=$(gh release view --repo caddyserver/caddy --json tagName -q '.tagName' | sed 's/^v//')
+          if [ -z "$CADDY_VERSION" ] || [ "$CADDY_VERSION" = "null" ]; then
+            echo "Failed to get latest version, using fallback"
+            CADDY_VERSION="2.9.1"
+          fi
           echo "Downloading Caddy version: $CADDY_VERSION"
           curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" -o caddy.tar.gz
           tar -xzf caddy.tar.gz
