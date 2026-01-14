@@ -1,17 +1,15 @@
 defmodule Caddy.Server do
   @moduledoc """
-
   Caddy Server
 
   Start Caddy Server in `Port` and `GenServer` to handle the server process.
-  Server outputs are save to Caddy.Logger process.
+  Server outputs are saved to Caddy.Logger process.
 
-  Won'nt start if Caddy binary not found or not executable.
+  Won't start if Caddy binary not found or not executable.
 
   Could be started by `Caddy.restart_server()` when Caddy binary is set.
-
   """
-  require Logger
+
   alias Caddy.Config
   alias Caddy.ConfigProvider
 
@@ -37,7 +35,7 @@ defmodule Caddy.Server do
 
           {:error, reason} ->
             Caddy.Telemetry.log_warning(
-              "Caddy Server initialization failed: #{reason}\n\nTo fix this issue:\n- If binary not found: `Caddy.Config.set_bin(\"/path/to/caddy\")`\n- Then restart: `Caddy.restart_server()`\n- Check configuration for syntax errors",
+              "Caddy Server initialization failed: #{reason}\n\nTo fix this issue:\n- If binary not found: `Caddy.ConfigProvider.set_bin(\"/path/to/caddy\")`\n- Then restart: `Caddy.restart_server()`\n- Check configuration for syntax errors",
               module: __MODULE__,
               error: reason
             )
@@ -207,8 +205,9 @@ defmodule Caddy.Server do
   end
 
   defp init_config_file(%Config{} = config) do
-    with caddyfile <- Config.to_caddyfile(config),
-         {:ok, config_map} <- Config.adapt(caddyfile, config.bin),
+    caddyfile = Config.to_caddyfile(config)
+
+    with {:ok, config_map} <- Config.adapt(caddyfile, config.bin),
          {:ok, cfg} <- Jason.encode(config_map),
          :ok <- File.write(Config.init_file(), cfg) do
       {:ok, Config.init_file()}

@@ -4,14 +4,12 @@ defmodule Caddy.ServerTest do
   alias Caddy.{Config, ConfigProvider}
 
   setup do
-    # Store original bin to restore after test
+    # Store original config to restore after test
     original_config = ConfigProvider.get_config()
 
     on_exit(fn ->
       # Restore original configuration
-      if original_config.bin do
-        ConfigProvider.set_bin(original_config.bin)
-      end
+      ConfigProvider.set_config(original_config)
 
       # Clean up any test artifacts
       if File.exists?(Config.pid_file()) do
@@ -42,23 +40,28 @@ defmodule Caddy.ServerTest do
       assert config.bin == original.bin
     end
 
-    test "can set global configuration", %{original_config: _original} do
-      global_config = "debug\nauto_https off"
-      ConfigProvider.set_global(global_config)
+    test "can set caddyfile configuration", %{original_config: _original} do
+      caddyfile = """
+      {
+        debug
+        auto_https off
+      }
+      """
+
+      ConfigProvider.set_caddyfile(caddyfile)
       config = ConfigProvider.get_config()
 
-      assert config.global == global_config
+      assert config.caddyfile == caddyfile
     end
 
-    test "can add site configuration", %{original_config: _original} do
-      site_name = "example.com"
-      site_config = "reverse_proxy localhost:3000"
+    test "can append to caddyfile configuration", %{original_config: _original} do
+      ConfigProvider.set_caddyfile("{ debug }")
+      ConfigProvider.append_caddyfile("example.com { reverse_proxy localhost:3000 }")
 
-      ConfigProvider.set_site(site_name, site_config)
       config = ConfigProvider.get_config()
 
-      assert Map.has_key?(config.sites, site_name)
-      assert config.sites[site_name] == site_config
+      assert String.contains?(config.caddyfile, "{ debug }")
+      assert String.contains?(config.caddyfile, "example.com")
     end
   end
 

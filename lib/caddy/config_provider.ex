@@ -2,11 +2,9 @@ defmodule Caddy.ConfigProvider do
   @moduledoc """
   Agent-based configuration provider for Caddy reverse proxy server.
 
-  Manages Caddy configuration including binary path, global settings,
-  site configurations, and environment variables using an Agent process.
+  Manages Caddy configuration using simple text-based Caddyfile format.
+  The configuration is stored as raw Caddyfile text, keeping things simple.
   """
-
-  require Logger
 
   use Agent
 
@@ -27,9 +25,7 @@ defmodule Caddy.ConfigProvider do
         Agent.update(__MODULE__, fn _ -> config end)
         duration = System.monotonic_time() - start_time
 
-        Caddy.Telemetry.emit_config_change(:set, %{duration: duration}, %{
-          config_size: map_size(config.sites)
-        })
+        Caddy.Telemetry.emit_config_change(:set, %{duration: duration}, %{})
 
         :ok
 
@@ -46,15 +42,13 @@ defmodule Caddy.ConfigProvider do
     config = Agent.get(__MODULE__, & &1)
     duration = System.monotonic_time() - start_time
 
-    Caddy.Telemetry.emit_config_change(:get, %{duration: duration}, %{
-      config_size: map_size(config.sites)
-    })
+    Caddy.Telemetry.emit_config_change(:get, %{duration: duration}, %{})
 
     config
   end
 
   @doc "Get config value by key"
-  @spec get(atom()) :: binary() | nil
+  @spec get(atom()) :: term()
   def get(name) do
     Agent.get(__MODULE__, &Map.get(&1, name))
   end
@@ -64,7 +58,8 @@ defmodule Caddy.ConfigProvider do
   def set_bin(caddy_bin) do
     case Config.validate_bin(caddy_bin) do
       :ok ->
-        Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
+        Agent.update(__MODULE__, &%{&1 | bin: caddy_bin})
+        :ok
 
       {:error, reason} ->
         {:error, reason}
@@ -74,76 +69,29 @@ defmodule Caddy.ConfigProvider do
   @doc "Set binary path and restart server"
   @spec set_bin!(binary()) :: :ok | {:error, term()}
   def set_bin!(caddy_bin) do
-    Agent.update(__MODULE__, &Map.put(&1, :bin, caddy_bin))
+    Agent.update(__MODULE__, &%{&1 | bin: caddy_bin})
     Caddy.Supervisor.restart_server()
   end
 
-  @doc "Set global configuration"
-  @spec set_global(Config.caddyfile()) :: :ok
-  def set_global(global) do
-    Agent.update(__MODULE__, &Map.put(&1, :global, global))
+  @doc "Set the Caddyfile content"
+  @spec set_caddyfile(binary()) :: :ok
+  def set_caddyfile(caddyfile) when is_binary(caddyfile) do
+    Agent.update(__MODULE__, &%{&1 | caddyfile: caddyfile})
   end
 
-  @doc "Set a snippet configuration"
-  @spec set_snippet(binary(), Caddy.Config.Snippet.t()) :: :ok
-  def set_snippet(name, %Caddy.Config.Snippet{} = snippet) when is_binary(name) do
-    Agent.update(
-      __MODULE__,
-      &Map.update(&1, :snippets, %{}, fn snippets -> Map.put(snippets, name, snippet) end)
-    )
+  @doc "Get the Caddyfile content"
+  @spec get_caddyfile() :: binary()
+  def get_caddyfile do
+    Agent.get(__MODULE__, & &1.caddyfile)
   end
 
-  @doc "Get a snippet by name"
-  @spec get_snippet(binary()) :: Caddy.Config.Snippet.t() | nil
-  def get_snippet(name) when is_binary(name) do
-    Agent.get(__MODULE__, fn config -> Map.get(config.snippets, name) end)
-  end
-
-  @doc "Remove a snippet by name"
-  @spec remove_snippet(binary()) :: :ok
-  def remove_snippet(name) when is_binary(name) do
+  @doc "Append content to the Caddyfile"
+  @spec append_caddyfile(binary()) :: :ok
+  def append_caddyfile(content) when is_binary(content) do
     Agent.update(__MODULE__, fn config ->
-      Map.update(config, :snippets, %{}, fn snippets -> Map.delete(snippets, name) end)
+      new_caddyfile = config.caddyfile <> "\n\n" <> content
+      %{config | caddyfile: String.trim(new_caddyfile)}
     end)
-  end
-
-  @doc "Get all snippets"
-  @spec get_snippets() :: %{binary() => Caddy.Config.Snippet.t()}
-  def get_snippets do
-    Agent.get(__MODULE__, fn config -> config.snippets end)
-  end
-
-  @doc """
-  Set additional configuration blocks.
-
-  **Deprecated:** This function is deprecated. Use `set_snippet/2` instead for snippet-based configuration.
-
-  This function now only logs a deprecation warning and does nothing else.
-  """
-  @spec set_additional([Config.caddyfile()]) :: :ok
-  def set_additional(_additionals) do
-    Caddy.Telemetry.log_warning("set_additional/1 is deprecated. Use set_snippet/2 instead.",
-      module: __MODULE__
-    )
-
-    :ok
-  end
-
-  @doc "Set site configuration"
-  @spec set_site(Config.site_name(), Config.site_config()) :: :ok | {:error, binary()}
-  def set_site(name, site) when is_atom(name), do: set_site(to_string(name), site)
-
-  def set_site(name, site) when is_binary(name) do
-    case Config.validate_site_config(site) do
-      :ok ->
-        Agent.update(
-          __MODULE__,
-          &Map.update(&1, :sites, %{}, fn sites -> Map.put(sites, name, site) end)
-        )
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 
   @doc "Backup current configuration"
@@ -184,8 +132,8 @@ defmodule Caddy.ConfigProvider do
     start_time = System.monotonic_time()
 
     case load_saved_config(backup_file) do
-      %{} = config_map ->
-        config = struct(Config, config_map)
+      %{} = config_map when map_size(config_map) > 0 ->
+        config = map_to_config(config_map)
         _result = set_config(config)
         duration = System.monotonic_time() - start_time
 
@@ -196,15 +144,15 @@ defmodule Caddy.ConfigProvider do
 
         {:ok, config}
 
-      error ->
+      _ ->
         duration = System.monotonic_time() - start_time
 
         Caddy.Telemetry.emit_config_change(:restore_error, %{duration: duration}, %{
           file_path: backup_file,
-          error: inspect(error)
+          error: "No backup found"
         })
 
-        error
+        {:error, :no_backup}
     end
   end
 
@@ -261,13 +209,13 @@ defmodule Caddy.ConfigProvider do
     config =
       case load_saved_config(Config.saved_json_file()) do
         %{} = saved_config when map_size(saved_config) > 0 ->
-          struct(Config, saved_config)
+          map_to_config(saved_config)
 
         _ ->
           %Config{
             env: Config.init_env(),
             bin: bin,
-            global: "admin unix/#{Config.socket_file()}"
+            caddyfile: Config.default_caddyfile()
           }
       end
 
@@ -284,20 +232,39 @@ defmodule Caddy.ConfigProvider do
         %Config{
           env: Config.init_env(),
           bin: bin,
-          global: "admin unix/#{Config.socket_file()}"
+          caddyfile: Config.default_caddyfile()
         }
     end
   end
 
   @doc "Convert caddyfile to JSON"
-  @spec adapt(Config.caddyfile()) :: {:ok, map()} | {:error, term()}
-  def adapt(binary) do
+  @spec adapt(binary()) :: {:ok, map()} | {:error, term()}
+  def adapt(caddyfile_text) do
     caddy_bin = get(:bin)
-    Config.adapt(binary, caddy_bin)
+    Config.adapt(caddyfile_text, caddy_bin)
   end
 
   # Private functions
+
   defp load_saved_config(file_path) do
     Config.load_saved_config(file_path)
   end
+
+  defp map_to_config(map) when is_map(map) do
+    %Config{
+      bin: Map.get(map, "bin") || Map.get(map, :bin),
+      caddyfile: Map.get(map, "caddyfile") || Map.get(map, :caddyfile) || "",
+      env: normalize_env(Map.get(map, "env") || Map.get(map, :env) || [])
+    }
+  end
+
+  defp normalize_env(env) when is_list(env) do
+    Enum.map(env, fn
+      [k, v] -> {k, v}
+      {k, v} -> {k, v}
+      other -> other
+    end)
+  end
+
+  defp normalize_env(_), do: []
 end

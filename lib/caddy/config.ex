@@ -1,30 +1,40 @@
 defmodule Caddy.Config do
   @moduledoc """
-  Configuration structure for Caddy reverse proxy server.
+  Simple text-based configuration for Caddy reverse proxy server.
 
-  Defines the configuration structure and validation functions for Caddy.
+  Configuration is stored as raw Caddyfile text. This design keeps things
+  stupid simple - users write native Caddyfile syntax directly.
+
+  ## Example
+
+      config = %Caddy.Config{
+        bin: "/usr/bin/caddy",
+        caddyfile: \"\"\"
+        {
+          debug
+          admin unix//tmp/caddy.sock
+        }
+
+        example.com {
+          reverse_proxy localhost:3000
+        }
+        \"\"\"
+      }
+
+  ## Validation
+
+  Configuration is validated by calling the Caddy binary's `adapt` command,
+  which converts Caddyfile to JSON and catches syntax errors.
   """
 
-  require Logger
-
-  alias Caddy.Config.{Global, Site, Snippet}
-
   @type t :: %__MODULE__{
-          version: binary(),
           bin: binary() | nil,
-          global: Global.t() | binary(),
-          snippets: %{binary() => Snippet.t()},
-          sites: %{binary() => Site.t() | site_config()},
+          caddyfile: binary(),
           env: list({binary(), binary()})
         }
 
-  @type caddyfile :: binary()
-  @type site_name :: binary()
-  @type site_listen :: binary()
-  @type site_config :: caddyfile() | {site_listen(), caddyfile()}
-
-  @derive {Jason.Encoder, only: [:version, :bin, :global, :snippets, :sites, :env]}
-  defstruct version: "2.0", bin: nil, global: "", snippets: %{}, sites: %{}, env: []
+  @derive {Jason.Encoder, only: [:bin, :caddyfile, :env]}
+  defstruct bin: nil, caddyfile: "", env: []
 
   # Path utilities
   defdelegate user_home, to: System
@@ -96,6 +106,16 @@ defmodule Caddy.Config do
     )
   end
 
+  @doc "Get backup file path"
+  @spec backup_json_file() :: Path.t()
+  def backup_json_file do
+    Application.get_env(
+      :caddy,
+      :backup_json_file,
+      Path.join(xdg_config_home(), "caddy/backup.json")
+    )
+  end
+
   @doc false
   def paths, do: [priv_path(), share_path(), etc_path(), run_path(), tmp_path()]
 
@@ -119,143 +139,125 @@ defmodule Caddy.Config do
     end)
   end
 
-  @doc "Convert caddyfile to JSON"
-  @spec adapt(caddyfile(), binary() | nil) :: {:ok, map()} | {:error, term()}
-  def adapt(binary, caddy_bin \\ nil) do
+  @doc """
+  Get the Caddyfile content from the config.
+
+  Simply returns the stored caddyfile text.
+  """
+  @spec to_caddyfile(t()) :: binary()
+  def to_caddyfile(%__MODULE__{caddyfile: caddyfile}), do: caddyfile
+
+  @doc """
+  Convert Caddyfile text to JSON using Caddy binary.
+
+  This validates the Caddyfile syntax and returns the JSON configuration
+  that Caddy will use internally.
+  """
+  @spec adapt(binary(), binary() | nil) :: {:ok, map()} | {:error, term()}
+  def adapt(caddyfile_text, caddy_bin \\ nil) do
     caddy_bin = caddy_bin || System.find_executable("caddy")
     start_time = System.monotonic_time()
 
     cond do
       is_nil(caddy_bin) ->
-        duration = System.monotonic_time() - start_time
+        emit_adapt_error(start_time, "Caddy binary path not configured")
 
-        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-          error: "Caddy binary path not configured"
-        })
-
-        {:error, "Caddy binary path not configured"}
-
-      String.trim(binary) == "" ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-          error: "Caddyfile content cannot be empty"
-        })
-
-        {:error, "Caddyfile content cannot be empty"}
+      String.trim(caddyfile_text) == "" ->
+        emit_adapt_error(start_time, "Caddyfile content cannot be empty")
 
       not File.exists?(caddy_bin) ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-          error: "Caddy binary not found"
-        })
-
-        {:error, "Caddy binary not found: #{caddy_bin}"}
+        emit_adapt_error(start_time, "Caddy binary not found: #{caddy_bin}")
 
       true ->
-        tmp_config = Path.expand("Caddyfile", tmp_path())
-
-        try do
-          with :ok <- ensure_dir_exists(tmp_config),
-               :ok <- File.write(tmp_config, binary),
-               {_fmt_output, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
-               {config_json, 0} <-
-                 System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
-               {:ok, config} <- Jason.decode(config_json),
-               :ok <- validate_adapted_config(config) do
-            duration = System.monotonic_time() - start_time
-
-            Caddy.Telemetry.emit_adapt_event(:success, %{
-              duration: duration,
-              config_size: byte_size(config_json)
-            })
-
-            {:ok, config}
-          else
-            {error_output, non_zero} when is_integer(non_zero) and non_zero != 0 ->
-              duration = System.monotonic_time() - start_time
-
-              Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-                error: error_output,
-                exit_code: non_zero
-              })
-
-              Caddy.Telemetry.log_error(
-                "Caddy command failed with exit code #{non_zero}: #{error_output}",
-                module: __MODULE__,
-                exit_code: non_zero,
-                error_output: error_output
-              )
-
-              {:error, {:caddy_error, non_zero, error_output}}
-
-            error ->
-              duration = System.monotonic_time() - start_time
-
-              Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-                error: inspect(error)
-              })
-
-              Caddy.Telemetry.log_error("Caddy adaptation failed: #{inspect(error)}",
-                module: __MODULE__,
-                error: error
-              )
-
-              error
-          end
-        rescue
-          e in File.Error ->
-            duration = System.monotonic_time() - start_time
-
-            Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-              error: "File operation error"
-            })
-
-            Caddy.Telemetry.log_error("File operation error: #{inspect(e)}",
-              module: __MODULE__,
-              error: e
-            )
-
-            {:error, {:file_error, e}}
-
-          e in Jason.DecodeError ->
-            duration = System.monotonic_time() - start_time
-
-            Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
-              error: "JSON decode error"
-            })
-
-            Caddy.Telemetry.log_error("JSON decode error: #{inspect(e)}",
-              module: __MODULE__,
-              error: e
-            )
-
-            {:error, {:json_error, e}}
-        after
-          if File.exists?(tmp_config), do: File.rm(tmp_config)
-        end
+        do_adapt(caddyfile_text, caddy_bin, start_time)
     end
   end
 
-  @doc "Get backup file path"
-  @spec backup_json_file() :: Path.t()
-  def backup_json_file do
-    Application.get_env(
-      :caddy,
-      :backup_json_file,
-      Path.join(xdg_config_home(), "caddy/backup.json")
-    )
+  defp do_adapt(caddyfile_text, caddy_bin, start_time) do
+    tmp_config = Path.expand("Caddyfile", tmp_path())
+
+    try do
+      with :ok <- ensure_dir_exists(tmp_config),
+           :ok <- File.write(tmp_config, caddyfile_text),
+           {_fmt_output, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
+           {config_json, 0} <-
+             System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
+           {:ok, config} <- Jason.decode(config_json),
+           :ok <- validate_adapted_config(config) do
+        duration = System.monotonic_time() - start_time
+
+        Caddy.Telemetry.emit_adapt_event(:success, %{
+          duration: duration,
+          config_size: byte_size(config_json)
+        })
+
+        {:ok, config}
+      else
+        {error_output, non_zero} when is_integer(non_zero) and non_zero != 0 ->
+          duration = System.monotonic_time() - start_time
+
+          Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+            error: error_output,
+            exit_code: non_zero
+          })
+
+          Caddy.Telemetry.log_error(
+            "Caddy command failed with exit code #{non_zero}: #{error_output}",
+            module: __MODULE__,
+            exit_code: non_zero,
+            error_output: error_output
+          )
+
+          {:error, {:caddy_error, non_zero, error_output}}
+
+        error ->
+          duration = System.monotonic_time() - start_time
+
+          Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{
+            error: inspect(error)
+          })
+
+          Caddy.Telemetry.log_error("Caddy adaptation failed: #{inspect(error)}",
+            module: __MODULE__,
+            error: error
+          )
+
+          error
+      end
+    rescue
+      e in File.Error ->
+        emit_adapt_error(start_time, "File operation error", e)
+
+      e in Jason.DecodeError ->
+        emit_adapt_error(start_time, "JSON decode error", e)
+    after
+      if File.exists?(tmp_config), do: File.rm(tmp_config)
+    end
   end
 
-  @doc """
-  Convert config to caddyfile.
+  defp emit_adapt_error(start_time, message, exception \\ nil) do
+    duration = System.monotonic_time() - start_time
 
-  Delegates to the Caddyfile protocol implementation.
-  """
-  @spec to_caddyfile(t()) :: caddyfile()
-  def to_caddyfile(config) do
-    Caddy.Caddyfile.to_caddyfile(config)
+    Caddy.Telemetry.emit_adapt_event(:error, %{duration: duration}, %{error: message})
+
+    if exception do
+      Caddy.Telemetry.log_error("#{message}: #{inspect(exception)}",
+        module: __MODULE__,
+        error: exception
+      )
+
+      {:error, {String.to_atom(String.replace(String.downcase(message), " ", "_")), exception}}
+    else
+      {:error, message}
+    end
+  end
+
+  defp validate_adapted_config(config) when is_map(config) do
+    if Map.has_key?(config, "apps") or Map.has_key?(config, "admin") do
+      :ok
+    else
+      {:error, "Invalid Caddy configuration structure"}
+    end
   end
 
   @doc "Validate Caddy binary path"
@@ -282,51 +284,18 @@ defmodule Caddy.Config do
     {:error, "binary path must be a string"}
   end
 
-  @doc "Validate site configuration format"
-  @spec validate_site_config(site_config()) :: :ok | {:error, binary()}
-  def validate_site_config(site) when is_binary(site) do
-    if String.trim(site) == "" do
-      {:error, "site configuration cannot be empty"}
-    else
-      :ok
-    end
-  end
-
-  def validate_site_config({listen, site}) when is_binary(listen) and is_binary(site) do
-    cond do
-      String.trim(listen) == "" ->
-        {:error, "listen address cannot be empty"}
-
-      String.trim(site) == "" ->
-        {:error, "site configuration cannot be empty"}
-
-      not String.contains?(listen, ":") ->
-        {:error, "listen address must contain port (e.g., ':8080')"}
-
-      true ->
-        :ok
-    end
-  end
-
-  def validate_site_config(_) do
-    {:error, "invalid site configuration format"}
-  end
-
   @doc "Validate complete configuration"
   @spec validate_config(t()) :: :ok | {:error, binary()}
   def validate_config(%__MODULE__{} = config) do
     cond do
-      not is_binary(config.global) or not is_map(config.snippets) or not is_map(config.sites) or
-          not is_list(config.env) ->
-        {:error, "invalid configuration structure"}
+      not is_binary(config.caddyfile) ->
+        {:error, "caddyfile must be a string"}
+
+      not is_list(config.env) ->
+        {:error, "env must be a list"}
 
       not (is_binary(config.bin) or is_nil(config.bin)) ->
-        {:error, "binary path must be a string or nil"}
-
-      not Enum.all?(config.sites, fn {_name, site_config} ->
-        validate_site_config(site_config) == :ok
-      end) ->
-        {:error, "invalid site configuration in sites"}
+        {:error, "bin must be a string or nil"}
 
       true ->
         :ok
@@ -359,14 +328,9 @@ defmodule Caddy.Config do
   @doc false
   def has_write_permission?(path) do
     case File.stat(path) do
-      {:ok, %File.Stat{access: :write} = _stat} ->
-        true
-
-      {:ok, %File.Stat{access: :read_write} = _stat} ->
-        true
-
-      _ ->
-        false
+      {:ok, %File.Stat{access: :write}} -> true
+      {:ok, %File.Stat{access: :read_write}} -> true
+      _ -> false
     end
   end
 
@@ -374,11 +338,8 @@ defmodule Caddy.Config do
   def check_bin(bin) do
     if can_execute?(bin) do
       case System.cmd(bin, ["version"]) do
-        {"v2" <> _, 0} ->
-          :ok
-
-        _ ->
-          {:error, "Caddy binary version check failed"}
+        {"v2" <> _, 0} -> :ok
+        _ -> {:error, "Caddy binary version check failed"}
       end
     else
       {:error, "Caddy binary not found or not executable"}
@@ -393,20 +354,11 @@ defmodule Caddy.Config do
          0b100 <- Bitwise.band(mode, 0b100) do
       true
     else
-      _ ->
-        false
+      _ -> false
     end
   end
 
   def can_execute?(_), do: false
-
-  defp validate_adapted_config(config) when is_map(config) do
-    if Map.has_key?(config, "apps") or Map.has_key?(config, "admin") do
-      :ok
-    else
-      {:error, "Invalid Caddy configuration structure"}
-    end
-  end
 
   @doc false
   def load_saved_config(file_path) do
@@ -447,111 +399,16 @@ defmodule Caddy.Config do
     ]
   end
 
-  # Deprecated delegates - kept for backward compatibility
-  @deprecated "use Caddy.set_bin/1 instead"
-  defdelegate set_bin(bin_path), to: Caddy.ConfigProvider
-  @deprecated "use Caddy.set_bin/1 instead"
-  defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
-  @deprecated "use Caddy.set_global/1 instead"
-  defdelegate set_global(global), to: Caddy.ConfigProvider
-  # Note: set_additional is deprecated - use Caddy.set_snippet/2 instead
-  defdelegate set_additional(additionals), to: Caddy.ConfigProvider
-  @deprecated "use Caddy.set_site/2 instead"
-  defdelegate set_site(name, site), to: Caddy.ConfigProvider
-end
-
-defimpl Caddy.Caddyfile, for: Caddy.Config do
-  @moduledoc """
-  Caddyfile protocol implementation for root Config.
-
-  Renders a complete Caddyfile with:
-  1. Global configuration block
-  2. Snippets (reusable blocks)
-  3. Sites (virtual hosts)
-
-  Supports both new struct-based config and legacy string-based config
-  for backward compatibility.
+  @doc """
+  Create a default Caddyfile with admin socket configuration.
   """
-
-  alias Caddy.Caddyfile
-  alias Caddy.Config.{Global, Site, Snippet}
-
-  def to_caddyfile(config) do
-    parts = []
-
-    # 1. Global block
-    global_text = render_global(config.global)
-    parts = if global_text != "", do: [global_text | parts], else: parts
-
-    # 2. Snippets
-    snippet_blocks =
-      config.snippets
-      |> Enum.sort_by(fn {name, _} -> name end)
-      |> Enum.map(fn {_name, snippet} -> Caddyfile.to_caddyfile(snippet) end)
-
-    parts = parts ++ snippet_blocks
-
-    # 3. Sites
-    site_blocks =
-      config.sites
-      |> Enum.sort_by(fn {name, _} -> name end)
-      |> Enum.map(fn {name, site} -> render_site(name, site) end)
-      |> Enum.filter(&(&1 != ""))
-
-    parts = parts ++ site_blocks
-
-    # Join all parts with double newline
-    Enum.reverse(parts) |> Enum.join("\n\n") |> String.trim()
-  end
-
-  # Render global config (supports both new Global struct and legacy string)
-  defp render_global(%Global{} = global), do: Caddyfile.to_caddyfile(global)
-
-  defp render_global(str) when is_binary(str) and str != "" do
-    # Legacy string-based global config
+  @spec default_caddyfile() :: binary()
+  def default_caddyfile do
     """
     {
-    #{str}
+      admin unix/#{socket_file()}
     }
     """
     |> String.trim()
-  end
-
-  defp render_global(_), do: ""
-
-  # Render site config (supports both new Site struct and legacy formats)
-  defp render_site(_name, %Site{} = site) do
-    Caddyfile.to_caddyfile(site)
-  end
-
-  # Legacy: string-based site config
-  defp render_site(name, site) when is_binary(site) do
-    """
-    #{name} {
-      #{indent(site)}
-    }
-    """
-    |> String.trim()
-  end
-
-  # Legacy: tuple-based site config {listen, config}
-  defp render_site(_name, {listen, site}) when is_binary(site) do
-    """
-    #{listen} {
-      #{indent(site)}
-    }
-    """
-    |> String.trim()
-  end
-
-  defp render_site(_, _), do: ""
-
-  defp indent(text) do
-    text
-    |> String.split("\n")
-    |> Enum.map(fn line ->
-      if String.trim(line) == "", do: "", else: "  #{line}"
-    end)
-    |> Enum.join("\n")
   end
 end

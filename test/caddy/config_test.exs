@@ -9,67 +9,52 @@ defmodule Caddy.ConfigTest do
   end
 
   describe "configuration structure validation" do
-    test "valid configuration" do
+    test "valid configuration with caddyfile text" do
       config = %Config{
         bin: "/usr/bin/caddy",
-        global: "debug",
-        snippets: %{},
-        sites: %{"test" => "reverse_proxy localhost:3000"},
+        caddyfile: """
+        {
+          debug
+        }
+
+        example.com {
+          reverse_proxy localhost:3000
+        }
+        """,
         env: [{"KEY", "value"}]
       }
 
       assert :ok = Config.validate_config(config)
     end
 
-    test "invalid configuration structure" do
+    test "valid configuration with nil bin" do
       config = %Config{
-        # Invalid type
-        bin: 123,
-        global: "debug",
-        sites: %{"test" => "reverse_proxy localhost:3000"}
+        bin: nil,
+        caddyfile: "{ debug }",
+        env: []
       }
 
-      assert {:error, "binary path must be a string or nil"} = Config.validate_config(config)
+      assert :ok = Config.validate_config(config)
     end
 
-    test "invalid site configuration in sites" do
+    test "invalid bin type" do
+      config = %Config{
+        bin: 123,
+        caddyfile: "{ debug }",
+        env: []
+      }
+
+      assert {:error, "bin must be a string or nil"} = Config.validate_config(config)
+    end
+
+    test "invalid env type" do
       config = %Config{
         bin: "/usr/bin/caddy",
-        global: "debug",
-        sites: %{"test" => ""}
+        caddyfile: "{ debug }",
+        env: "not a list"
       }
 
-      assert {:error, "invalid site configuration in sites"} = Config.validate_config(config)
-    end
-  end
-
-  describe "site configuration validation" do
-    test "valid site configuration with string" do
-      assert :ok = Config.validate_site_config("reverse_proxy localhost:3000")
-    end
-
-    test "invalid empty site configuration" do
-      assert {:error, "site configuration cannot be empty"} = Config.validate_site_config("")
-      assert {:error, "site configuration cannot be empty"} = Config.validate_site_config("   ")
-    end
-
-    test "valid site configuration with listen tuple" do
-      assert :ok = Config.validate_site_config({":8080", "reverse_proxy localhost:3000"})
-    end
-
-    test "invalid empty listen address" do
-      assert {:error, "listen address cannot be empty"} =
-               Config.validate_site_config({"", "config"})
-    end
-
-    test "invalid listen address format" do
-      assert {:error, "listen address must contain port (e.g., ':8080')"} =
-               Config.validate_site_config({"invalid", "config"})
-    end
-
-    test "invalid site configuration format" do
-      assert {:error, "invalid site configuration format"} = Config.validate_site_config(123)
-      assert {:error, "invalid site configuration format"} = Config.validate_site_config(nil)
+      assert {:error, "env must be a list"} = Config.validate_config(config)
     end
   end
 
@@ -89,75 +74,39 @@ defmodule Caddy.ConfigTest do
     end
   end
 
-  describe "configuration validation" do
-    test "validate full configuration" do
-      config = %Config{
-        bin: "/usr/bin/caddy",
-        global: "debug",
-        sites: %{"test" => "reverse_proxy localhost:3000"}
+  describe "to_caddyfile" do
+    test "returns the caddyfile text directly" do
+      caddyfile_text = """
+      {
+        debug
+        admin unix//tmp/caddy.sock
       }
 
-      assert is_binary(Config.to_caddyfile(config))
+      example.com {
+        reverse_proxy localhost:3000
+      }
+      """
+
+      config = %Config{
+        bin: "/usr/bin/caddy",
+        caddyfile: caddyfile_text
+      }
+
+      assert Config.to_caddyfile(config) == caddyfile_text
     end
 
-    test "empty sites configuration" do
-      config = %Config{bin: "/usr/bin/caddy", global: "debug", sites: %{}}
-      caddyfile = Config.to_caddyfile(config)
-      assert String.contains?(caddyfile, "debug")
+    test "handles empty caddyfile" do
+      config = %Config{caddyfile: ""}
+      assert Config.to_caddyfile(config) == ""
     end
   end
 
-  describe "configuration conversion" do
-    test "to_caddyfile generates valid caddyfile" do
-      config = %Config{
-        global: "debug",
-        snippets: %{
-          "metrics" => %Caddy.Config.Snippet{name: "metrics", content: "metrics :2020"}
-        },
-        sites: %{
-          "test" => "reverse_proxy localhost:3000",
-          "proxy" => {":8080", "reverse_proxy localhost:3128"}
-        }
-      }
-
-      caddyfile = Config.to_caddyfile(config)
-      assert String.contains?(caddyfile, "debug")
-      assert String.contains?(caddyfile, "(metrics)")
-      assert String.contains?(caddyfile, "metrics :2020")
-      assert String.contains?(caddyfile, "test {")
-      assert String.contains?(caddyfile, ":8080 {")
-    end
-
-    test "to_caddyfile handles empty configuration" do
-      config = %Config{}
-      caddyfile = Config.to_caddyfile(config)
-      assert is_binary(caddyfile)
-      # Empty config produces empty string with new protocol
-      assert caddyfile == ""
-    end
-  end
-
-  describe "configuration management" do
-    test "set_config validates configuration" do
-      valid_config = %Config{
-        bin: "/usr/bin/caddy",
-        global: "debug",
-        sites: %{"test" => "reverse_proxy localhost:3000"}
-      }
-
-      assert :ok = ConfigProvider.set_config(valid_config)
-    end
-
-    test "set_config rejects invalid configuration" do
-      invalid_config = %Config{
-        # Invalid type
-        bin: 123,
-        global: "debug",
-        sites: %{"test" => "reverse_proxy localhost:3000"}
-      }
-
-      assert {:error, "binary path must be a string or nil"} =
-               ConfigProvider.set_config(invalid_config)
+  describe "default_caddyfile" do
+    test "generates default caddyfile with admin socket" do
+      caddyfile = Config.default_caddyfile()
+      assert String.contains?(caddyfile, "admin unix/")
+      assert String.contains?(caddyfile, "{")
+      assert String.contains?(caddyfile, "}")
     end
   end
 
@@ -167,11 +116,10 @@ defmodule Caddy.ConfigTest do
       original_config = ConfigProvider.get_config()
 
       # Temporarily set config with no binary
-      Agent.update(ConfigProvider, fn _state -> %Config{bin: nil} end)
+      Agent.update(ConfigProvider, fn _state -> %Config{bin: nil, caddyfile: ""} end)
 
       # ConfigProvider.adapt will call Config.adapt which falls back to System.find_executable
-      # So if caddy is in PATH, it will succeed; otherwise it will error
-      result = ConfigProvider.adapt("test")
+      result = ConfigProvider.adapt("{ debug }")
 
       case result do
         {:ok, _config} ->
@@ -183,7 +131,7 @@ defmodule Caddy.ConfigTest do
           assert true
 
         {:error, _reason} ->
-          # Some other error (invalid Caddyfile, etc.)
+          # Some other error
           assert true
       end
 
@@ -200,10 +148,37 @@ defmodule Caddy.ConfigTest do
     test "init creates default configuration structure" do
       config = ConfigProvider.init([])
       assert %Config{} = config
-      assert is_binary(config.global)
+      assert is_binary(config.caddyfile)
       assert is_list(config.env)
-      assert is_map(config.sites)
-      assert is_map(config.snippets)
+    end
+
+    test "init with caddy_bin argument" do
+      config = ConfigProvider.init(caddy_bin: "/custom/path/caddy")
+      assert config.bin == "/custom/path/caddy"
+    end
+  end
+
+  describe "ConfigProvider operations" do
+    test "set_caddyfile updates the config" do
+      new_caddyfile = "{ admin off }"
+      :ok = ConfigProvider.set_caddyfile(new_caddyfile)
+      assert ConfigProvider.get_caddyfile() == new_caddyfile
+    end
+
+    test "append_caddyfile adds to existing config" do
+      original = ConfigProvider.get_caddyfile()
+      ConfigProvider.set_caddyfile("{ debug }")
+      :ok = ConfigProvider.append_caddyfile("example.com { respond 200 }")
+      result = ConfigProvider.get_caddyfile()
+      assert String.contains?(result, "{ debug }")
+      assert String.contains?(result, "example.com")
+
+      # Restore
+      ConfigProvider.set_caddyfile(original)
+    end
+
+    test "get returns config value by key" do
+      assert is_binary(ConfigProvider.get(:caddyfile)) or is_nil(ConfigProvider.get(:caddyfile))
     end
   end
 
@@ -217,6 +192,55 @@ defmodule Caddy.ConfigTest do
 
       # Cleanup
       File.rm_rf(test_dir)
+    end
+
+    test "ensure_dir_exists creates parent directories" do
+      test_path =
+        Path.join(System.tmp_dir!(), "caddy_test_#{System.unique_integer()}/sub/file.txt")
+
+      assert :ok = Config.ensure_dir_exists(test_path)
+      assert File.exists?(Path.dirname(test_path))
+
+      # Cleanup
+      File.rm_rf(Path.dirname(Path.dirname(test_path)))
+    end
+  end
+
+  describe "path utilities" do
+    test "base_path returns string" do
+      assert is_binary(Config.base_path())
+    end
+
+    test "etc_path returns string" do
+      assert is_binary(Config.etc_path())
+    end
+
+    test "run_path returns string" do
+      assert is_binary(Config.run_path())
+    end
+
+    test "tmp_path returns string" do
+      assert is_binary(Config.tmp_path())
+    end
+
+    test "socket_file returns string" do
+      assert is_binary(Config.socket_file())
+    end
+
+    test "pid_file returns string" do
+      assert is_binary(Config.pid_file())
+    end
+
+    test "init_file returns string" do
+      assert is_binary(Config.init_file())
+    end
+  end
+
+  describe "init_env" do
+    test "returns list of environment tuples" do
+      env = Config.init_env()
+      assert is_list(env)
+      assert Enum.all?(env, fn {k, v} -> is_binary(k) and is_binary(v) end)
     end
   end
 end
