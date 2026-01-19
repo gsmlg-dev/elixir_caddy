@@ -134,16 +134,11 @@ defmodule Caddy.Admin.Request do
   end
 
   defp get_admin_sock do
-    Application.get_env(:caddy, :config)
-    |> get_in(["admin", "listen"])
-    |> String.replace(~r/^unix\//, "")
+    Caddy.Config.socket_file()
   end
 
   defp gen_raw_header(method, path, content_type \\ nil) do
-    host =
-      Application.get_env(:caddy, :config)
-      |> get_in(["admin", "origins"])
-      |> Enum.at(0, "caddy-admin.local")
+    host = Application.get_env(:caddy, :admin_host, "caddy-admin.local")
 
     """
     #{String.upcase(method)} #{path} HTTP/1.1
