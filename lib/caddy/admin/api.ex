@@ -224,7 +224,7 @@ defmodule Caddy.Admin.Api do
     start_time = System.monotonic_time()
     data_string = Jason.encode!(data)
 
-    case request_module().post("/config/", data_string) do
+    case request_module().post("/config/", data_string, "application/json") do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
 
@@ -284,7 +284,7 @@ defmodule Caddy.Admin.Api do
     start_time = System.monotonic_time()
     data_string = Jason.encode!(data)
 
-    case request_module().put("/config/", data_string) do
+    case request_module().put("/config/", data_string, "application/json") do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
 
@@ -344,7 +344,7 @@ defmodule Caddy.Admin.Api do
     start_time = System.monotonic_time()
     data_string = Jason.encode!(data)
 
-    case request_module().patch("/config/", data_string) do
+    case request_module().patch("/config/", data_string, "application/json") do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
 
@@ -402,7 +402,7 @@ defmodule Caddy.Admin.Api do
   def delete_config do
     start_time = System.monotonic_time()
 
-    case request_module().delete("/config/") do
+    case request_module().delete("/config/", "", "application/json") do
       {:ok, resp, body} ->
         duration = System.monotonic_time() - start_time
 

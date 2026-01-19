@@ -8,12 +8,13 @@ defmodule Caddy.Supervisor do
   ## Supervision Tree
 
   - `Caddy.ConfigProvider` - Agent for configuration management
+  - `Caddy.ConfigManager` - GenServer coordinating in-memory and runtime config
   - `Caddy.Logger` - Logging subsystem with buffer and storage
   - `Caddy.Server` - GenServer managing the Caddy binary process
 
   The rest_for_one strategy ensures that if the ConfigProvider crashes,
-  all subsequent children are restarted. If the Logger crashes, only
-  the Server is restarted.
+  all subsequent children are restarted. If the ConfigManager crashes,
+  Logger and Server are restarted.
   """
 
   use Supervisor
@@ -39,6 +40,7 @@ defmodule Caddy.Supervisor do
   def init(args) do
     children = [
       {Caddy.ConfigProvider, [args]},
+      {Caddy.ConfigManager, [args]},
       Caddy.Logger,
       Caddy.Server
     ]

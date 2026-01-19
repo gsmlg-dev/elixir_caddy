@@ -63,6 +63,48 @@ defmodule Caddy.Telemetry do
   end
 
   @doc """
+  Emits a telemetry event for ConfigManager operations.
+
+  ## Event Types
+
+  - `:sync_to_caddy` - When syncing in-memory config to running Caddy
+  - `:sync_from_caddy` - When pulling config from running Caddy
+  - `:drift_check` - When checking for config drift
+  - `:rollback` - When rolling back to previous config
+  - `:apply` - When applying runtime config directly
+  - `:validate` - When validating config
+
+  ## Examples
+
+      Caddy.Telemetry.emit_config_manager_event(:sync_to_caddy, %{duration: 100}, %{success: true})
+  """
+  @spec emit_config_manager_event(atom(), map(), keyword() | map()) :: :ok
+  def emit_config_manager_event(event_type, measurements \\ %{}, metadata \\ []) do
+    metadata = Map.new(metadata)
+    :telemetry.execute([:caddy, :config_manager, event_type], measurements, metadata)
+  end
+
+  @doc """
+  Emits a telemetry event for Resources operations.
+
+  ## Event Types
+
+  - `:get` - When reading a resource
+  - `:set` - When updating a resource
+  - `:delete` - When deleting a resource
+  - `:error` - When an operation fails
+
+  ## Examples
+
+      Caddy.Telemetry.emit_resources_event(:get, %{duration: 50}, %{resource: :http_servers})
+  """
+  @spec emit_resources_event(atom(), map(), keyword() | map()) :: :ok
+  def emit_resources_event(event_type, measurements \\ %{}, metadata \\ []) do
+    metadata = Map.new(metadata)
+    :telemetry.execute([:caddy, :resources, event_type], measurements, metadata)
+  end
+
+  @doc """
   Emits a telemetry event for logging operations.
   """
   @spec emit_log_event(atom(), map(), keyword() | map()) :: :ok
@@ -216,7 +258,19 @@ defmodule Caddy.Telemetry do
       [:caddy, :log, :error],
       [:caddy, :system, :memory],
       [:caddy, :system, :process_count],
-      [:caddy, :system, :uptime]
+      [:caddy, :system, :uptime],
+      # ConfigManager events
+      [:caddy, :config_manager, :sync_to_caddy],
+      [:caddy, :config_manager, :sync_from_caddy],
+      [:caddy, :config_manager, :drift_check],
+      [:caddy, :config_manager, :rollback],
+      [:caddy, :config_manager, :apply],
+      [:caddy, :config_manager, :validate],
+      # Resources events
+      [:caddy, :resources, :get],
+      [:caddy, :resources, :set],
+      [:caddy, :resources, :delete],
+      [:caddy, :resources, :error]
     ]
   end
 end

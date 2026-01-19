@@ -13,6 +13,8 @@ defmodule Caddy.ConfigProvider do
   @doc "Start config agent"
   @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(args) do
+    # Handle nested list from supervisor child spec {Module, [args]}
+    args = if is_list(args) and length(args) == 1 and is_list(hd(args)), do: hd(args), else: args
     Agent.start_link(fn -> init(args) end, name: __MODULE__)
   end
 
@@ -206,7 +208,7 @@ defmodule Caddy.ConfigProvider do
 
     Config.ensure_path_exists()
 
-    config =
+    base_config =
       case load_saved_config(Config.saved_json_file()) do
         %{} = saved_config when map_size(saved_config) > 0 ->
           map_to_config(saved_config)
@@ -218,6 +220,9 @@ defmodule Caddy.ConfigProvider do
             caddyfile: Config.default_caddyfile()
           }
       end
+
+    # Override bin if provided in args (args take precedence over saved config)
+    config = if bin, do: %Config{base_config | bin: bin}, else: base_config
 
     case Config.validate_config(config) do
       :ok ->

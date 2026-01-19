@@ -129,4 +129,75 @@ defmodule Caddy do
 
   @doc "Adapt Caddyfile text to JSON (validates syntax)"
   defdelegate adapt(caddyfile), to: Caddy.ConfigProvider
+
+  # ============================================================================
+  # ConfigManager - Runtime Config Coordination
+  # ============================================================================
+
+  @doc """
+  Get JSON config from running Caddy.
+
+  Returns the current configuration from the running Caddy process via Admin API.
+  """
+  defdelegate get_runtime_config, to: Caddy.ConfigManager
+
+  @doc """
+  Get JSON config from running Caddy at specific path.
+
+  ## Examples
+
+      {:ok, servers} = Caddy.get_runtime_config("apps/http/servers")
+  """
+  defdelegate get_runtime_config(path), to: Caddy.ConfigManager
+
+  @doc """
+  Sync in-memory config to running Caddy.
+
+  Adapts the Caddyfile and loads it into the running Caddy instance.
+
+  ## Options
+
+  - `:backup` - If true, backup current runtime config before sync (default: true)
+  - `:force` - If true, skip validation (default: false)
+
+  ## Examples
+
+      :ok = Caddy.sync_to_caddy()
+      :ok = Caddy.sync_to_caddy(backup: false)
+  """
+  defdelegate sync_to_caddy, to: Caddy.ConfigManager
+  defdelegate sync_to_caddy(opts), to: Caddy.ConfigManager
+
+  @doc """
+  Pull runtime config from Caddy to memory.
+
+  Note: This stores the JSON config. Use with caution as it changes the config format.
+  """
+  defdelegate sync_from_caddy, to: Caddy.ConfigManager
+
+  @doc """
+  Check if in-memory and runtime configs are in sync.
+
+  Returns `{:ok, :in_sync}` if configs match, or `{:ok, {:drift_detected, diff}}`
+  with information about the differences.
+  """
+  defdelegate check_sync_status, to: Caddy.ConfigManager
+
+  @doc """
+  Apply JSON config directly to running Caddy.
+
+  Bypasses in-memory config - use for runtime-only changes.
+  """
+  defdelegate apply_runtime_config(config), to: Caddy.ConfigManager
+  defdelegate apply_runtime_config(path, config), to: Caddy.ConfigManager
+
+  @doc """
+  Validate Caddyfile without applying.
+  """
+  defdelegate validate_caddyfile(caddyfile), to: Caddy.ConfigManager, as: :validate_config
+
+  @doc """
+  Rollback to last known good config.
+  """
+  defdelegate rollback, to: Caddy.ConfigManager
 end
