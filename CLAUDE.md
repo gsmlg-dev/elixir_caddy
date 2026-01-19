@@ -93,7 +93,7 @@ Caddy.start()
 
 ### Configuration Paths
 ```elixir
-# Configure custom paths in config.exs
+# Configure custom paths in your application config
 config :caddy, :base_path, "/custom/caddy/path"
 config :caddy, :etc_path, "/custom/etc/path"
 config :caddy, :run_path, "/custom/run/path"
