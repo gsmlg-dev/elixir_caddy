@@ -105,6 +105,29 @@ defmodule Caddy.Telemetry do
   end
 
   @doc """
+  Emits a telemetry event for external mode operations.
+
+  ## Event Types
+
+  - `:init` - When external server initializes
+  - `:health_check` - When health check is performed
+  - `:command_executed` - When a system command is executed
+  - `:config_pushed` - When configuration is pushed to external Caddy
+  - `:status_changed` - When Caddy status changes (running/stopped/unknown)
+  - `:terminate` - When external server terminates
+
+  ## Examples
+
+      Caddy.Telemetry.emit_external_event(:health_check, %{duration: 50}, %{status: :running})
+      Caddy.Telemetry.emit_external_event(:command_executed, %{duration: 100}, %{command: :restart})
+  """
+  @spec emit_external_event(atom(), map(), keyword() | map()) :: :ok
+  def emit_external_event(event_type, measurements \\ %{}, metadata \\ []) do
+    metadata = Map.new(metadata)
+    :telemetry.execute([:caddy, :external, event_type], measurements, metadata)
+  end
+
+  @doc """
   Emits a telemetry event for logging operations.
   """
   @spec emit_log_event(atom(), map(), keyword() | map()) :: :ok
@@ -270,7 +293,14 @@ defmodule Caddy.Telemetry do
       [:caddy, :resources, :get],
       [:caddy, :resources, :set],
       [:caddy, :resources, :delete],
-      [:caddy, :resources, :error]
+      [:caddy, :resources, :error],
+      # External mode events
+      [:caddy, :external, :init],
+      [:caddy, :external, :health_check],
+      [:caddy, :external, :command_executed],
+      [:caddy, :external, :config_pushed],
+      [:caddy, :external, :status_changed],
+      [:caddy, :external, :terminate]
     ]
   end
 end

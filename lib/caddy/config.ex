@@ -116,6 +116,85 @@ defmodule Caddy.Config do
     )
   end
 
+  # External mode configuration
+
+  @doc """
+  Get the operating mode for Caddy management.
+
+  - `:embedded` (default) - Caddy binary is managed by this application
+  - `:external` - Caddy is managed externally (e.g., systemd), communicate via Admin API
+
+  ## Example
+
+      config :caddy, mode: :external
+  """
+  @spec mode() :: :embedded | :external
+  def mode, do: Application.get_env(:caddy, :mode, :embedded)
+
+  @doc """
+  Check if running in external mode.
+  """
+  @spec external_mode?() :: boolean()
+  def external_mode?, do: mode() == :external
+
+  @doc """
+  Get the admin API URL for external mode.
+
+  Supports both TCP and Unix socket connections:
+  - `"http://localhost:2019"` - TCP connection
+  - `"unix:///path/to/caddy.sock"` - Unix domain socket
+
+  Falls back to the configured socket_file in embedded mode.
+
+  ## Example
+
+      config :caddy, admin_url: "http://localhost:2019"
+  """
+  @spec admin_url() :: binary()
+  def admin_url do
+    case Application.get_env(:caddy, :admin_url) do
+      nil -> "unix://#{socket_file()}"
+      url -> url
+    end
+  end
+
+  @doc """
+  Get system commands for external mode operations.
+
+  Commands are executed via System.cmd when managing an externally-controlled Caddy.
+
+  ## Example
+
+      config :caddy, commands: [
+        start: "systemctl start caddy",
+        stop: "systemctl stop caddy",
+        restart: "systemctl restart caddy",
+        status: "systemctl is-active caddy"
+      ]
+  """
+  @spec commands() :: keyword(binary())
+  def commands, do: Application.get_env(:caddy, :commands, [])
+
+  @doc """
+  Get a specific command for external mode.
+
+  Returns nil if the command is not configured.
+  """
+  @spec command(atom()) :: binary() | nil
+  def command(name) when is_atom(name), do: Keyword.get(commands(), name)
+
+  @doc """
+  Get the health check interval in milliseconds for external mode.
+
+  Defaults to 30 seconds.
+
+  ## Example
+
+      config :caddy, health_interval: 60_000
+  """
+  @spec health_interval() :: pos_integer()
+  def health_interval, do: Application.get_env(:caddy, :health_interval, 30_000)
+
   @doc false
   def paths, do: [priv_path(), share_path(), etc_path(), run_path(), tmp_path()]
 
