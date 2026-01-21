@@ -1,14 +1,15 @@
 defmodule Caddy.Admin.Request do
   @moduledoc """
-  Low-level HTTP client for Caddy Admin API over Unix domain sockets.
+  Low-level HTTP client for Caddy Admin API.
 
   This module provides direct HTTP communication with the Caddy admin API
-  using Unix domain sockets. It implements the RequestBehaviour and handles
-  GET, POST, PUT, PATCH, and DELETE operations.
+  using either Unix domain sockets or TCP connections. It implements the
+  RequestBehaviour and handles GET, POST, PUT, PATCH, and DELETE operations.
 
   ## Implementation Details
 
-  - Uses `:gen_tcp` for Unix socket communication
+  - Uses `Caddy.Admin.Transport` for connection management
+  - Supports both Unix sockets (embedded mode) and TCP (external mode)
   - Parses HTTP responses with `:http_bin` packet mode
   - Automatically decodes JSON responses
   - Returns structured response with status, headers, and body
@@ -16,6 +17,7 @@ defmodule Caddy.Admin.Request do
   @behaviour Caddy.Admin.RequestBehaviour
 
   alias Caddy.Admin.Request
+  alias Caddy.Admin.Transport
   require Logger
 
   @type t :: %__MODULE__{
@@ -27,118 +29,80 @@ defmodule Caddy.Admin.Request do
   defstruct status: 0, headers: [], body: ""
 
   @doc """
-  Send HTTP GET method to admin socket
+  Send HTTP GET method to admin API
   """
   @impl true
   def get(path) do
-    unix_path = get_admin_sock()
-
-    {:ok, socket} =
-      :gen_tcp.connect({:local, unix_path}, 0, [
-        :binary,
-        {:active, false},
-        {:packet, :http_bin}
-      ])
-
-    req_raw_header = gen_raw_header("get", path)
-    :gen_tcp.send(socket, req_raw_header)
-    do_recv(socket)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("get", path, nil, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      do_recv(socket)
+    end
   end
 
   @doc """
-  Send HTTP POST method to admin socket
+  Send HTTP POST method to admin API
   """
   @impl true
   def post(path, data, content_type \\ "application/json") do
-    unix_path = get_admin_sock()
-
-    {:ok, socket} =
-      :gen_tcp.connect({:local, unix_path}, 0, [
-        :binary,
-        {:active, false},
-        {:packet, :http_bin}
-      ])
-
-    req_raw_header = gen_raw_header("post", path, content_type)
-
-    :gen_tcp.send(socket, req_raw_header)
-    :gen_tcp.send(socket, data)
-    do_recv(socket)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("post", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
   @doc """
-  Send HTTP PATCH method to admin socket
+  Send HTTP PATCH method to admin API
   """
   @impl true
   def patch(path, data, content_type \\ "application/json") do
-    unix_path = get_admin_sock()
-
-    {:ok, socket} =
-      :gen_tcp.connect({:local, unix_path}, 0, [
-        :binary,
-        {:active, false},
-        {:packet, :http_bin}
-      ])
-
-    req_raw_header = gen_raw_header("patch", path, content_type)
-
-    :gen_tcp.send(socket, req_raw_header)
-    :gen_tcp.send(socket, data)
-    do_recv(socket)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("patch", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
   @doc """
-  Send HTTP PUT method to admin socket
+  Send HTTP PUT method to admin API
   """
   @impl true
   @spec put(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def put(path, data, content_type \\ "application/json") do
-    unix_path = get_admin_sock()
-
-    {:ok, socket} =
-      :gen_tcp.connect({:local, unix_path}, 0, [
-        :binary,
-        {:active, false},
-        {:packet, :http_bin}
-      ])
-
-    req_raw_header = gen_raw_header("put", path, content_type)
-
-    :gen_tcp.send(socket, req_raw_header)
-    :gen_tcp.send(socket, data)
-    do_recv(socket)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("put", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
   @doc """
-  Send HTTP DELETE method to admin socket
+  Send HTTP DELETE method to admin API
   """
   @impl true
   @spec delete(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def delete(path, data \\ "", content_type \\ "application/json") do
-    unix_path = get_admin_sock()
-
-    {:ok, socket} =
-      :gen_tcp.connect({:local, unix_path}, 0, [
-        :binary,
-        {:active, false},
-        {:packet, :http_bin}
-      ])
-
-    req_raw_header = gen_raw_header("delete", path, content_type)
-
-    :gen_tcp.send(socket, req_raw_header)
-    :gen_tcp.send(socket, data)
-    do_recv(socket)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("delete", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
-  defp get_admin_sock do
-    Caddy.Config.socket_file()
-  end
-
-  defp gen_raw_header(method, path, content_type \\ nil) do
-    host = Application.get_env(:caddy, :admin_host, "caddy-admin.local")
+  defp gen_raw_header(method, path, content_type, conn_info) do
+    host = Transport.host_header(conn_info)
 
     """
     #{String.upcase(method)} #{path} HTTP/1.1
