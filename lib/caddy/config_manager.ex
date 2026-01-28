@@ -371,7 +371,7 @@ defmodule Caddy.ConfigManager do
   def init(_args) do
     # Determine initial application state based on whether config exists
     caddyfile = ConfigProvider.get_caddyfile()
-    has_config = caddyfile != nil and String.trim(caddyfile) != ""
+    has_config = String.trim(caddyfile) != ""
 
     initial_app_state = State.initial_state(has_config)
 
