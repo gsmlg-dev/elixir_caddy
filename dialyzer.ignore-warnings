@@ -3,3 +3,16 @@
 lib/caddy.ex:100
 lib/caddy/logger.ex:37
 lib/caddy/telemetry.ex:69
+
+# Defensive pattern matching in Server.External
+# These patterns handle potential edge cases from external APIs
+lib/caddy/server/external.ex:173
+lib/caddy/server/external.ex:225
+lib/caddy/server/external.ex:242
+lib/caddy/server/external.ex:285
+lib/caddy/server/external.ex:373
+lib/caddy/server/external.ex:395
+lib/caddy/server/external.ex:398
+
+# Parser guard clause - defensive pattern matching
+lib/caddy/metrics/parser.ex:86
