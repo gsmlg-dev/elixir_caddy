@@ -45,10 +45,12 @@ defmodule Caddy.ConfigManager do
 
   alias Caddy.Admin.Api
   alias Caddy.ConfigProvider
+  alias Caddy.State
   alias Caddy.Telemetry
 
   @type source :: :memory | :runtime | :both
   @type sync_status :: :in_sync | {:drift_detected, map()}
+  @type application_state :: State.state()
 
   # ============================================================================
   # Client API
@@ -191,9 +193,15 @@ defmodule Caddy.ConfigManager do
 
     with :ok <- maybe_validate(caddyfile, validate?),
          :ok <- ConfigProvider.set_caddyfile(caddyfile),
+         :ok <- notify_config_set(),
          :ok <- maybe_sync(sync?) do
       :ok
     end
+  end
+
+  defp notify_config_set do
+    GenServer.cast(__MODULE__, :config_set)
+    :ok
   end
 
   @doc """
@@ -219,12 +227,22 @@ defmodule Caddy.ConfigManager do
   @doc """
   Pull running Caddy config to memory.
 
-  Note: This stores the JSON config as-is. The in-memory format becomes JSON,
-  not Caddyfile text. Use with caution as it changes the config format.
+  **DEPRECATED**: This function stores JSON in the Caddyfile field, which breaks
+  the text-first design principle. It will be removed in v3.0.0.
+
+  The Caddy Admin API returns JSON configuration, but there is no reverse
+  conversion from JSON back to Caddyfile format. Use `get_runtime_config/0`
+  to inspect the running configuration instead.
   """
+  @deprecated "Use get_runtime_config/0 instead. Will be removed in v3.0.0"
   @impl Caddy.ConfigManager.Behaviour
   @spec sync_from_caddy() :: :ok | {:error, term()}
   def sync_from_caddy do
+    Telemetry.log_warning(
+      "sync_from_caddy/0 is deprecated. Use get_runtime_config/0 instead.",
+      module: __MODULE__
+    )
+
     GenServer.call(__MODULE__, :sync_from_caddy)
   end
 
@@ -295,11 +313,55 @@ defmodule Caddy.ConfigManager do
   end
 
   @doc """
-  Get current state information.
+  Get current internal state information (for debugging).
   """
-  @spec get_state() :: map()
+  @spec get_internal_state() :: map()
+  def get_internal_state do
+    GenServer.call(__MODULE__, :get_internal_state)
+  end
+
+  @doc """
+  Get the current application state.
+
+  Returns one of: `:initializing`, `:unconfigured`, `:configured`, `:synced`, `:degraded`
+  """
+  @spec get_state() :: application_state()
   def get_state do
-    GenServer.call(__MODULE__, :get_state)
+    GenServer.call(__MODULE__, :get_application_state)
+  end
+
+  @doc """
+  Check if the system is ready to serve (synced state).
+  """
+  @spec ready?() :: boolean()
+  def ready? do
+    State.ready?(get_state())
+  end
+
+  @doc """
+  Check if configuration is set (configured, synced, or degraded state).
+  """
+  @spec configured?() :: boolean()
+  def configured? do
+    State.configured?(get_state())
+  end
+
+  @doc """
+  Clear the current configuration, returning to unconfigured state.
+  """
+  @spec clear_config() :: :ok | {:error, term()}
+  def clear_config do
+    GenServer.call(__MODULE__, :clear_config)
+  end
+
+  @doc """
+  Report a health check result to update state.
+
+  Called by Server.External when health checks complete.
+  """
+  @spec report_health_status(:ok | :error) :: :ok
+  def report_health_status(status) when status in [:ok, :error] do
+    GenServer.cast(__MODULE__, {:health_status, status})
   end
 
   # ============================================================================
@@ -308,11 +370,20 @@ defmodule Caddy.ConfigManager do
 
   @impl true
   def init(_args) do
+    # Determine initial application state based on whether config exists
+    caddyfile = ConfigProvider.get_caddyfile()
+    has_config = caddyfile != nil and String.trim(caddyfile) != ""
+
+    initial_app_state = State.initial_state(has_config)
+
     state = %{
+      application_state: initial_app_state,
       last_sync_time: nil,
       last_sync_status: nil,
       last_known_good_config: nil
     }
+
+    Telemetry.emit_state_change_event(:initializing, initial_app_state)
 
     {:ok, state}
   end
@@ -347,8 +418,16 @@ defmodule Caddy.ConfigManager do
           success: true
         })
 
+        old_app_state = state.application_state
+        {:ok, new_app_state} = State.transition(old_app_state, :sync_success)
+
+        if old_app_state != new_app_state do
+          Telemetry.emit_state_change_event(old_app_state, new_app_state)
+        end
+
         new_state =
           state
+          |> Map.put(:application_state, new_app_state)
           |> Map.put(:last_sync_time, DateTime.utc_now())
           |> Map.put(:last_sync_status, :success)
           |> maybe_update_last_known_good()
@@ -361,8 +440,17 @@ defmodule Caddy.ConfigManager do
           error: reason
         })
 
+        old_app_state = state.application_state
+
+        new_app_state =
+          case State.transition(old_app_state, :sync_failure) do
+            {:ok, s} -> s
+            {:error, :invalid_transition} -> old_app_state
+          end
+
         new_state =
           state
+          |> Map.put(:application_state, new_app_state)
           |> Map.put(:last_sync_time, DateTime.utc_now())
           |> Map.put(:last_sync_status, {:failed, reason})
 
@@ -498,8 +586,81 @@ defmodule Caddy.ConfigManager do
   end
 
   @impl true
-  def handle_call(:get_state, _from, state) do
+  def handle_call(:get_internal_state, _from, state) do
     {:reply, state, state}
+  end
+
+  @impl true
+  def handle_call(:get_application_state, _from, state) do
+    {:reply, state.application_state, state}
+  end
+
+  @impl true
+  def handle_call(:clear_config, _from, state) do
+    old_app_state = state.application_state
+
+    case State.transition(old_app_state, :config_cleared) do
+      {:ok, new_app_state} ->
+        ConfigProvider.set_caddyfile("")
+
+        Telemetry.emit_state_change_event(old_app_state, new_app_state)
+
+        new_state = %{state | application_state: new_app_state}
+        {:reply, :ok, new_state}
+
+      {:error, :invalid_transition} ->
+        {:reply, {:error, {:invalid_state_for_clear, old_app_state}}, state}
+    end
+  end
+
+  @impl true
+  def handle_cast({:health_status, :ok}, state) do
+    old_app_state = state.application_state
+
+    new_app_state =
+      case State.transition(old_app_state, :health_ok) do
+        {:ok, s} -> s
+        {:error, :invalid_transition} -> old_app_state
+      end
+
+    if old_app_state != new_app_state do
+      Telemetry.emit_state_change_event(old_app_state, new_app_state)
+    end
+
+    {:noreply, %{state | application_state: new_app_state}}
+  end
+
+  def handle_cast({:health_status, :error}, state) do
+    old_app_state = state.application_state
+
+    new_app_state =
+      case State.transition(old_app_state, :health_fail) do
+        {:ok, s} -> s
+        {:error, :invalid_transition} -> old_app_state
+      end
+
+    if old_app_state != new_app_state do
+      Telemetry.emit_state_change_event(old_app_state, new_app_state)
+    end
+
+    {:noreply, %{state | application_state: new_app_state}}
+  end
+
+  @impl true
+  def handle_cast(:config_set, state) do
+    old_app_state = state.application_state
+
+    new_app_state =
+      case State.transition(old_app_state, :config_set) do
+        {:ok, s} -> s
+        {:error, :invalid_transition} -> old_app_state
+      end
+
+    if old_app_state != new_app_state do
+      Telemetry.emit_state_change_event(old_app_state, new_app_state)
+    end
+
+    {:noreply, %{state | application_state: new_app_state}}
   end
 
   # ============================================================================

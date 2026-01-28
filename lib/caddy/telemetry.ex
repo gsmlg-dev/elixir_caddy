@@ -105,6 +105,52 @@ defmodule Caddy.Telemetry do
   end
 
   @doc """
+  Emits a telemetry event for metrics operations.
+
+  ## Event Types
+
+  - `:collected` - When metrics are successfully fetched and parsed
+  - `:fetch_error` - When fetching metrics fails
+  - `:poller_started` - When the metrics poller starts
+  - `:poller_stopped` - When the metrics poller stops
+
+  ## Examples
+
+      Caddy.Telemetry.emit_metrics_event(:collected, %{duration: 50}, %{metric_count: 25})
+  """
+  @spec emit_metrics_event(atom(), map(), keyword() | map()) :: :ok
+  def emit_metrics_event(event_type, measurements \\ %{}, metadata \\ []) do
+    metadata = Map.new(metadata)
+    :telemetry.execute([:caddy, :metrics, event_type], measurements, metadata)
+  end
+
+  @doc """
+  Emits a telemetry event for application state changes.
+
+  ## Event: [:caddy, :state, :changed]
+
+  This event is emitted whenever the application state machine transitions
+  from one state to another.
+
+  ## Metadata
+
+  - `:from` - The previous state
+  - `:to` - The new state
+
+  ## Examples
+
+      Caddy.Telemetry.emit_state_change_event(:unconfigured, :configured)
+  """
+  @spec emit_state_change_event(atom(), atom()) :: :ok
+  def emit_state_change_event(from_state, to_state) do
+    :telemetry.execute(
+      [:caddy, :state, :changed],
+      %{timestamp: System.system_time()},
+      %{from: from_state, to: to_state}
+    )
+  end
+
+  @doc """
   Emits a telemetry event for external mode operations.
 
   ## Event Types
@@ -300,7 +346,14 @@ defmodule Caddy.Telemetry do
       [:caddy, :external, :command_executed],
       [:caddy, :external, :config_pushed],
       [:caddy, :external, :status_changed],
-      [:caddy, :external, :terminate]
+      [:caddy, :external, :terminate],
+      # State machine events
+      [:caddy, :state, :changed],
+      # Metrics events
+      [:caddy, :metrics, :collected],
+      [:caddy, :metrics, :fetch_error],
+      [:caddy, :metrics, :poller_started],
+      [:caddy, :metrics, :poller_stopped]
     ]
   end
 end

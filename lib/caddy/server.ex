@@ -5,8 +5,8 @@ defmodule Caddy.Server do
   This module delegates to the appropriate server implementation based on the
   configured mode:
 
-  - `:embedded` (default) - Uses `Caddy.Server.Embedded` to manage a local Caddy process
-  - `:external` - Uses `Caddy.Server.External` to communicate with an externally managed Caddy
+  - `:external` (default) - Uses `Caddy.Server.External` to communicate with an externally managed Caddy
+  - `:embedded` - Uses `Caddy.Server.Embedded` to manage a local Caddy process
 
   ## Embedded Mode
 
@@ -21,11 +21,7 @@ defmodule Caddy.Server do
 
   ## Configuration
 
-      # Embedded mode (default)
-      config :caddy, mode: :embedded
-      config :caddy, caddy_bin: "/usr/bin/caddy"
-
-      # External mode
+      # External mode (default)
       config :caddy, mode: :external
       config :caddy, admin_url: "http://localhost:2019"
       config :caddy, commands: [
@@ -34,6 +30,10 @@ defmodule Caddy.Server do
         restart: "systemctl restart caddy",
         status: "systemctl is-active caddy"
       ]
+
+      # Embedded mode
+      config :caddy, mode: :embedded
+      config :caddy, caddy_bin: "/usr/bin/caddy"
   """
 
   alias Caddy.Config

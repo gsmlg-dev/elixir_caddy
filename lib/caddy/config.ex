@@ -121,15 +121,18 @@ defmodule Caddy.Config do
   @doc """
   Get the operating mode for Caddy management.
 
-  - `:embedded` (default) - Caddy binary is managed by this application
-  - `:external` - Caddy is managed externally (e.g., systemd), communicate via Admin API
+  - `:external` (default) - Caddy is managed externally (e.g., systemd), communicate via Admin API
+  - `:embedded` - Caddy binary is managed by this application
+
+  External mode is the default because it's safer - it doesn't spawn processes
+  and works with empty configuration (waiting state).
 
   ## Example
 
-      config :caddy, mode: :external
+      config :caddy, mode: :embedded
   """
   @spec mode() :: :embedded | :external
-  def mode, do: Application.get_env(:caddy, :mode, :embedded)
+  def mode, do: Application.get_env(:caddy, :mode, :external)
 
   @doc """
   Check if running in external mode.

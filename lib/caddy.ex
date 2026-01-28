@@ -171,8 +171,14 @@ defmodule Caddy do
   @doc """
   Pull runtime config from Caddy to memory.
 
-  Note: This stores the JSON config. Use with caution as it changes the config format.
+  **DEPRECATED**: This function stores JSON in the Caddyfile field, which breaks
+  the text-first design principle. It will be removed in v3.0.0.
+
+  The Caddy Admin API returns JSON configuration, but there is no reverse
+  conversion from JSON back to Caddyfile format. Use `get_runtime_config/0`
+  to inspect the running configuration instead.
   """
+  @deprecated "Use get_runtime_config/0 instead. Will be removed in v3.0.0"
   defdelegate sync_from_caddy, to: Caddy.ConfigManager
 
   @doc """
@@ -200,4 +206,80 @@ defmodule Caddy do
   Rollback to last known good config.
   """
   defdelegate rollback, to: Caddy.ConfigManager
+
+  # ============================================================================
+  # State Machine
+  # ============================================================================
+
+  @doc """
+  Get the current application state.
+
+  Returns one of:
+  - `:initializing` - Library starting up
+  - `:unconfigured` - No Caddyfile set, waiting for configuration
+  - `:configured` - Caddyfile set, pending sync to Caddy
+  - `:synced` - Configuration synced to Caddy, operational
+  - `:degraded` - Configuration synced but Caddy not responding
+
+  ## Examples
+
+      iex> Caddy.get_state()
+      :unconfigured
+
+      iex> Caddy.set_caddyfile("localhost { respond 200 }")
+      :ok
+      iex> Caddy.get_state()
+      :configured
+  """
+  defdelegate get_state, to: Caddy.ConfigManager
+
+  @doc """
+  Check if the system is ready to serve requests.
+
+  Returns `true` only when in `:synced` state (configuration has been
+  successfully pushed to Caddy).
+
+  ## Examples
+
+      iex> Caddy.ready?()
+      false
+
+      iex> Caddy.sync_to_caddy()
+      :ok
+      iex> Caddy.ready?()
+      true
+  """
+  defdelegate ready?, to: Caddy.ConfigManager
+
+  @doc """
+  Check if a Caddyfile configuration is set.
+
+  Returns `true` when in `:configured`, `:synced`, or `:degraded` state.
+
+  ## Examples
+
+      iex> Caddy.configured?()
+      false
+
+      iex> Caddy.set_caddyfile("localhost { respond 200 }")
+      :ok
+      iex> Caddy.configured?()
+      true
+  """
+  defdelegate configured?, to: Caddy.ConfigManager
+
+  @doc """
+  Clear the current configuration, returning to `:unconfigured` state.
+
+  Can only be called from `:configured` state. Returns an error if called
+  from other states.
+
+  ## Examples
+
+      iex> Caddy.clear_config()
+      :ok
+      iex> Caddy.get_state()
+      :unconfigured
+  """
+  defdelegate clear_config, to: Caddy.ConfigManager
 end

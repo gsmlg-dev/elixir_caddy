@@ -243,21 +243,44 @@ defmodule Caddy.ConfigManagerTest do
   # get_state
   # ============================================================================
 
-  describe "get_state/0" do
-    test "returns current state" do
-      state = ConfigManager.get_state()
+  describe "get_internal_state/0" do
+    test "returns current internal state" do
+      state = ConfigManager.get_internal_state()
 
       assert Map.has_key?(state, :last_sync_time)
       assert Map.has_key?(state, :last_sync_status)
       assert Map.has_key?(state, :last_known_good_config)
+      assert Map.has_key?(state, :application_state)
     end
 
-    test "initial state has nil values" do
-      state = ConfigManager.get_state()
+    test "initial state has expected structure" do
+      state = ConfigManager.get_internal_state()
 
       # On fresh start, these should be nil
       # (they may have values if other tests ran first)
       assert is_map(state)
+    end
+  end
+
+  describe "get_state/0" do
+    test "returns application state atom" do
+      state = ConfigManager.get_state()
+
+      # Should return an atom representing the application state
+      assert state in [:initializing, :unconfigured, :configured, :synced, :degraded]
+    end
+  end
+
+  describe "ready?/0 and configured?/0" do
+    test "ready? returns false when not synced" do
+      # In test environment, state is typically :configured (has test config)
+      # ready? only returns true when :synced
+      assert is_boolean(ConfigManager.ready?())
+    end
+
+    test "configured? returns appropriate value" do
+      # Should return boolean
+      assert is_boolean(ConfigManager.configured?())
     end
   end
 

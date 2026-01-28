@@ -493,6 +493,67 @@ defmodule Caddy.Admin.Api do
   end
 
   @doc """
+  Fetch Prometheus metrics from Caddy's metrics endpoint.
+
+  The metrics endpoint must be enabled in Caddy configuration:
+
+      {
+        servers {
+          metrics
+        }
+      }
+
+  Returns the raw Prometheus exposition format text.
+  """
+  @spec get_metrics(binary()) :: {:ok, binary()} | {:error, term()}
+  def get_metrics(endpoint \\ "/metrics") do
+    start_time = System.monotonic_time()
+
+    case request_module().get(endpoint) do
+      {:ok, %{status: 200}, body} when is_binary(body) ->
+        duration = System.monotonic_time() - start_time
+
+        Caddy.Telemetry.emit_api_event(:get_metrics, %{duration: duration, status: 200}, %{
+          endpoint: endpoint,
+          size: byte_size(body)
+        })
+
+        {:ok, body}
+
+      {:ok, %{status: 200}, body} when is_map(body) ->
+        # Metrics endpoint should return text, not JSON
+        # If it's a map, convert to string
+        duration = System.monotonic_time() - start_time
+
+        Caddy.Telemetry.emit_api_event(:get_metrics, %{duration: duration, status: 200}, %{
+          endpoint: endpoint
+        })
+
+        {:ok, Jason.encode!(body)}
+
+      {:ok, %{status: status}, _} ->
+        duration = System.monotonic_time() - start_time
+
+        Caddy.Telemetry.emit_api_event(:get_metrics_error, %{duration: duration}, %{
+          endpoint: endpoint,
+          status: status
+        })
+
+        {:error, {:http_error, status}}
+
+      {:error, reason} ->
+        duration = System.monotonic_time() - start_time
+
+        Caddy.Telemetry.emit_api_event(:get_metrics_error, %{duration: duration}, %{
+          endpoint: endpoint,
+          error: reason
+        })
+
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Get detailed server info including version and uptime
   """
   @spec server_info() :: {:ok, map()} | {:error, binary()}
