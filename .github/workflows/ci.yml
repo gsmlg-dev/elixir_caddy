@@ -124,9 +124,9 @@ jobs:
         id: plt-cache
         with:
           path: priv/plts
-          key: ${{ runner.os }}-plt-otp28-elixir1.18-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-plt-v2-otp28-elixir1.18-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-plt-otp28-elixir1.18-
+            ${{ runner.os }}-plt-v2-otp28-elixir1.18-
 
       - name: Create PLTs directory
         run: mkdir -p priv/plts
