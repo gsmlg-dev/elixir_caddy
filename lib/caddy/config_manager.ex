@@ -193,9 +193,8 @@ defmodule Caddy.ConfigManager do
 
     with :ok <- maybe_validate(caddyfile, validate?),
          :ok <- ConfigProvider.set_caddyfile(caddyfile),
-         :ok <- notify_config_set(),
-         :ok <- maybe_sync(sync?) do
-      :ok
+         :ok <- notify_config_set() do
+      maybe_sync(sync?)
     end
   end
 

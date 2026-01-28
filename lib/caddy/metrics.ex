@@ -122,16 +122,7 @@ defmodule Caddy.Metrics do
   def fetch_raw do
     endpoint = metrics_endpoint()
 
-    case Api.get_metrics(endpoint) do
-      {:ok, body} when is_binary(body) ->
-        {:ok, body}
-
-      {:error, reason} ->
-        {:error, reason}
-
-      nil ->
-        {:error, :metrics_not_available}
-    end
+    Api.get_metrics(endpoint)
   end
 
   @doc """

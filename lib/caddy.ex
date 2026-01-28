@@ -178,8 +178,12 @@ defmodule Caddy do
   conversion from JSON back to Caddyfile format. Use `get_runtime_config/0`
   to inspect the running configuration instead.
   """
+  @compile {:no_warn_undefined, [{Caddy.ConfigManager, :sync_from_caddy, 0}]}
   @deprecated "Use get_runtime_config/0 instead. Will be removed in v3.0.0"
-  defdelegate sync_from_caddy, to: Caddy.ConfigManager
+  def sync_from_caddy do
+    # Suppress deprecation warning - intentional call to deprecated internal function
+    apply(Caddy.ConfigManager, :sync_from_caddy, [])
+  end
 
   @doc """
   Check if in-memory and runtime configs are in sync.
