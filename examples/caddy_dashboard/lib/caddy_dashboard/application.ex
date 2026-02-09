@@ -7,11 +7,12 @@ defmodule CaddyDashboard.Application do
 
   @impl true
   def start(_type, _args) do
+    # Note: Caddy.Supervisor is auto-started by the :caddy application
+    # so we don't add it here to avoid "already started" errors
     children = [
       CaddyDashboardWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:caddy_dashboard, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: CaddyDashboard.PubSub},
-      {Caddy, []},
       CaddyDashboard.TelemetryCollector,
       CaddyDashboardWeb.Endpoint
     ]
