@@ -17,6 +17,7 @@ defmodule CaddyDashboardWeb.MetricsLive do
       |> assign(:page_title, "Metrics")
       |> assign(:show_raw, false)
       |> assign(:raw_metrics, nil)
+      |> assign(:refresh_interval, @refresh_interval)
       |> fetch_metrics()
 
     {:ok, socket}

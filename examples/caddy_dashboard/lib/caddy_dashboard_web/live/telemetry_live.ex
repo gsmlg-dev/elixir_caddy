@@ -29,6 +29,7 @@ defmodule CaddyDashboardWeb.TelemetryLive do
      |> assign(:events, events)
      |> assign(:filter_category, "all")
      |> assign(:paused, false)
+     |> assign(:max_events, @max_events)
      |> assign(:page_title, "Telemetry Events")}
   end
 
