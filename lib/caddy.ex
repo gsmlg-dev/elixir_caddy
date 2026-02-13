@@ -101,11 +101,54 @@ defmodule Caddy do
   @doc "Set Caddy binary path and restart server"
   defdelegate set_bin!(bin_path), to: Caddy.ConfigProvider
 
-  # Configuration management - text-based Caddyfile
-  @doc "Set the Caddyfile configuration (raw text)"
+  # ============================================================================
+  # Configuration Management - 3-Part Structure
+  # ============================================================================
+
+  # Global Options
+  @doc "Set global options content (without braces)"
+  defdelegate set_global(content), to: Caddy.ConfigProvider
+
+  @doc "Get global options content"
+  defdelegate get_global(), to: Caddy.ConfigProvider
+
+  # Additionals Management (snippets, matchers, etc.)
+  @doc "Add an additional (snippet, matcher, etc.)"
+  defdelegate add_additional(name, content), to: Caddy.ConfigProvider
+
+  @doc "Update an existing additional by name, or add if not found"
+  defdelegate update_additional(name, content), to: Caddy.ConfigProvider
+
+  @doc "Remove an additional by name"
+  defdelegate remove_additional(name), to: Caddy.ConfigProvider
+
+  @doc "Get all additionals"
+  defdelegate get_additionals(), to: Caddy.ConfigProvider
+
+  @doc "Get an additional by name"
+  defdelegate get_additional(name), to: Caddy.ConfigProvider
+
+  # Site Management
+  @doc "Add a site configuration"
+  defdelegate add_site(address, config), to: Caddy.ConfigProvider
+
+  @doc "Update an existing site by address, or add if not found"
+  defdelegate update_site(address, config), to: Caddy.ConfigProvider
+
+  @doc "Remove a site by address"
+  defdelegate remove_site(address), to: Caddy.ConfigProvider
+
+  @doc "Get all sites"
+  defdelegate get_sites(), to: Caddy.ConfigProvider
+
+  @doc "Get a site by address"
+  defdelegate get_site(address), to: Caddy.ConfigProvider
+
+  # Assembled Caddyfile (backward compatible)
+  @doc "Set the Caddyfile configuration (parses into 3 parts)"
   defdelegate set_caddyfile(caddyfile), to: Caddy.ConfigProvider
 
-  @doc "Get the current Caddyfile configuration"
+  @doc "Get the assembled Caddyfile configuration"
   defdelegate get_caddyfile(), to: Caddy.ConfigProvider
 
   @doc "Append content to the Caddyfile"

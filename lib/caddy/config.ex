@@ -1,24 +1,51 @@
 defmodule Caddy.Config do
   @moduledoc """
-  Simple text-based configuration for Caddy reverse proxy server.
+  Structured configuration for Caddy reverse proxy server.
 
-  Configuration is stored as raw Caddyfile text. This design keeps things
-  stupid simple - users write native Caddyfile syntax directly.
+  Configuration is stored in 3 distinct parts that are assembled into a Caddyfile:
+
+  1. **Global options** (`global`) - Content for the global options block `{ ... }`
+  2. **Additionals** (`additionals`) - List of snippets, imports, matchers, etc.
+  3. **Sites** (`sites`) - List of site configurations with address and content
 
   ## Example
 
       config = %Caddy.Config{
-        bin: "/usr/bin/caddy",
-        caddyfile: \"\"\"
-        {
-          debug
-          admin unix//tmp/caddy.sock
-        }
+        global: \"\"\"
+        debug
+        admin unix//tmp/caddy.sock
+        \"\"\",
+        additionals: [
+          %{name: "common", content: "(common) {\\n  header X-Frame-Options DENY\\n}"},
+          %{name: "security", content: "(security) {\\n  header X-Content-Type-Options nosniff\\n}"}
+        ],
+        sites: [
+          %{address: "example.com", config: "reverse_proxy localhost:3000"},
+          %{address: "api.example.com", config: "reverse_proxy localhost:4000"}
+        ]
+      }
 
-        example.com {
-          reverse_proxy localhost:3000
-        }
-        \"\"\"
+  This assembles into:
+
+      {
+        debug
+        admin unix//tmp/caddy.sock
+      }
+
+      (common) {
+        header X-Frame-Options DENY
+      }
+
+      (security) {
+        header X-Content-Type-Options nosniff
+      }
+
+      example.com {
+        reverse_proxy localhost:3000
+      }
+
+      api.example.com {
+        reverse_proxy localhost:4000
       }
 
   ## Validation
@@ -27,14 +54,32 @@ defmodule Caddy.Config do
   which converts Caddyfile to JSON and catches syntax errors.
   """
 
+  @typedoc """
+  Additional configuration item (snippet, import, matcher, etc.).
+
+  - `name` - A descriptive name for this additional (e.g., "common-headers", "security")
+  - `content` - The actual Caddyfile content
+  """
+  @type additional :: %{name: binary(), content: binary()}
+
+  @typedoc """
+  Site configuration map with address and config content.
+
+  - `address` - The site address (e.g., "example.com", "localhost:8080")
+  - `config` - The site configuration content (without wrapping braces)
+  """
+  @type site :: %{address: binary(), config: binary()}
+
   @type t :: %__MODULE__{
           bin: binary() | nil,
-          caddyfile: binary(),
+          global: binary(),
+          additionals: list(additional()),
+          sites: list(site()),
           env: list({binary(), binary()})
         }
 
-  @derive {Jason.Encoder, only: [:bin, :caddyfile, :env]}
-  defstruct bin: nil, caddyfile: "", env: []
+  @derive {Jason.Encoder, only: [:bin, :global, :additionals, :sites, :env]}
+  defstruct bin: nil, global: "", additionals: [], sites: [], env: []
 
   # Path utilities
   defdelegate user_home, to: System
@@ -222,12 +267,96 @@ defmodule Caddy.Config do
   end
 
   @doc """
-  Get the Caddyfile content from the config.
+  Assemble the 3-part configuration into a complete Caddyfile text.
 
-  Simply returns the stored caddyfile text.
+  Combines global options, additional directives, and site configurations
+  into a single Caddyfile string.
+
+  ## Output Format
+
+      {
+        <global content>
+      }
+
+      <additional content>
+
+      <site1_address> {
+        <site1_content>
+      }
+
+      <site2_address> {
+        <site2_content>
+      }
+
+  ## Examples
+
+      iex> config = %Caddy.Config{
+      ...>   global: "debug",
+      ...>   additional: "",
+      ...>   sites: [%{address: "example.com", config: "reverse_proxy localhost:3000"}]
+      ...> }
+      iex> Caddy.Config.to_caddyfile(config)
+      "{\\n  debug\\n}\\n\\nexample.com {\\n  reverse_proxy localhost:3000\\n}"
   """
   @spec to_caddyfile(t()) :: binary()
-  def to_caddyfile(%__MODULE__{caddyfile: caddyfile}), do: caddyfile
+  def to_caddyfile(%__MODULE__{global: global, additionals: additionals, sites: sites}) do
+    parts = []
+
+    # Add global block if not empty
+    parts =
+      if String.trim(global) != "" do
+        global_block = format_global_block(global)
+        parts ++ [global_block]
+      else
+        parts
+      end
+
+    # Add each additional directive
+    parts =
+      Enum.reduce(additionals, parts, fn %{content: content}, acc ->
+        if String.trim(content) != "" do
+          acc ++ [String.trim(content)]
+        else
+          acc
+        end
+      end)
+
+    # Add site blocks
+    parts =
+      Enum.reduce(sites, parts, fn %{address: address, config: config}, acc ->
+        site_block = format_site_block(address, config)
+        acc ++ [site_block]
+      end)
+
+    Enum.join(parts, "\n\n")
+  end
+
+  @doc false
+  defp format_global_block(content) do
+    indented = indent_content(content)
+    "{\n#{indented}\n}"
+  end
+
+  @doc false
+  defp format_site_block(address, content) do
+    if String.trim(content) == "" do
+      "#{address} {}"
+    else
+      indented = indent_content(content)
+      "#{address} {\n#{indented}\n}"
+    end
+  end
+
+  @doc false
+  defp indent_content(content) do
+    content
+    |> String.trim()
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      if String.trim(line) == "", do: "", else: "  #{line}"
+    end)
+    |> Enum.join("\n")
+  end
 
   @doc """
   Convert Caddyfile text to JSON using Caddy binary.
@@ -370,8 +499,20 @@ defmodule Caddy.Config do
   @spec validate_config(t()) :: :ok | {:error, binary()}
   def validate_config(%__MODULE__{} = config) do
     cond do
-      not is_binary(config.caddyfile) ->
-        {:error, "caddyfile must be a string"}
+      not is_binary(config.global) ->
+        {:error, "global must be a string"}
+
+      not is_list(config.additionals) ->
+        {:error, "additionals must be a list"}
+
+      not valid_additionals?(config.additionals) ->
+        {:error, "additionals must be a list of maps with :name and :content string keys"}
+
+      not is_list(config.sites) ->
+        {:error, "sites must be a list"}
+
+      not valid_sites?(config.sites) ->
+        {:error, "sites must be a list of maps with :address and :config string keys"}
 
       not is_list(config.env) ->
         {:error, "env must be a list"}
@@ -383,6 +524,32 @@ defmodule Caddy.Config do
         :ok
     end
   end
+
+  defp valid_additionals?(additionals) when is_list(additionals) do
+    Enum.all?(additionals, fn
+      %{name: name, content: content}
+      when is_binary(name) and is_binary(content) ->
+        true
+
+      _ ->
+        false
+    end)
+  end
+
+  defp valid_additionals?(_), do: false
+
+  defp valid_sites?(sites) when is_list(sites) do
+    Enum.all?(sites, fn
+      %{address: address, config: config}
+      when is_binary(address) and is_binary(config) ->
+        true
+
+      _ ->
+        false
+    end)
+  end
+
+  defp valid_sites?(_), do: false
 
   @doc false
   def parse_caddyfile(caddy_bin, caddy_file) do
@@ -486,11 +653,19 @@ defmodule Caddy.Config do
   """
   @spec default_caddyfile() :: binary()
   def default_caddyfile do
-    """
-    {
-      admin unix/#{socket_file()}
+    to_caddyfile(default_config())
+  end
+
+  @doc """
+  Create a default config struct with admin socket configuration.
+  """
+  @spec default_config() :: t()
+  def default_config do
+    %__MODULE__{
+      global: "admin unix/#{socket_file()}",
+      additionals: [],
+      sites: [],
+      env: init_env()
     }
-    """
-    |> String.trim()
   end
 end
