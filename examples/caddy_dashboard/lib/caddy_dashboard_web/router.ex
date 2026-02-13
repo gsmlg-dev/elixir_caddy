@@ -20,5 +20,6 @@ defmodule CaddyDashboardWeb.Router do
     live "/server", ServerLive, :index
     live "/logs", LogsLive, :index
     live "/telemetry", TelemetryLive, :index
+    live "/settings", SettingsLive, :index
   end
 end

@@ -4,7 +4,7 @@ defmodule CaddyDashboardWeb.ConfigLive do
 
   Shows different UI based on operating mode:
   - External mode: Admin URL configuration and connection status
-  - Embedded mode: Caddyfile editor, binary path, environment variables
+  - Embedded mode: 3-part Caddyfile editor (global, additionals, sites)
   """
   use CaddyDashboardWeb, :live_view
 
@@ -24,22 +24,40 @@ defmodule CaddyDashboardWeb.ConfigLive do
   end
 
   defp assign_mode_specific(socket, :external) do
-    # External mode - just need connection info
-    socket
-    |> assign(:health_interval, Caddy.Config.health_interval())
-  end
-
-  defp assign_mode_specific(socket, :embedded) do
-    # Embedded mode - full config management
+    # External mode - connection info + config management
     config = load_config()
 
     socket
-    |> assign(:bin, config.bin || "")
-    |> assign(:caddyfile, config.caddyfile || "")
-    |> assign(:env, config.env || [])
-    |> assign(:new_env_key, "")
-    |> assign(:new_env_value, "")
-    |> assign(:active_tab, "caddyfile")
+    |> assign(:health_interval, Caddy.Config.health_interval())
+    |> assign(:global, config.global || "")
+    |> assign(:additionals, config.additionals || [])
+    |> assign(:sites, config.sites || [])
+    |> assign(:new_additional_name, "")
+    |> assign(:new_additional_content, "")
+    |> assign(:editing_additional, nil)
+    |> assign(:new_site_address, "")
+    |> assign(:new_site_config, "")
+    |> assign(:editing_site, nil)
+    |> assign(:active_tab, "global")
+    |> assign(:validation_result, nil)
+    |> assign(:adaptation_result, nil)
+  end
+
+  defp assign_mode_specific(socket, :embedded) do
+    # Embedded mode - full config management with 3-part structure
+    config = load_config()
+
+    socket
+    |> assign(:global, config.global || "")
+    |> assign(:additionals, config.additionals || [])
+    |> assign(:sites, config.sites || [])
+    |> assign(:new_additional_name, "")
+    |> assign(:new_additional_content, "")
+    |> assign(:editing_additional, nil)
+    |> assign(:new_site_address, "")
+    |> assign(:new_site_config, "")
+    |> assign(:editing_site, nil)
+    |> assign(:active_tab, "global")
     |> assign(:validation_result, nil)
     |> assign(:adaptation_result, nil)
   end
@@ -61,77 +79,236 @@ defmodule CaddyDashboardWeb.ConfigLive do
     {:noreply, assign(socket, :active_tab, tab)}
   end
 
+  # Global config events
   @impl true
-  def handle_event("update_bin", %{"bin" => bin}, socket) do
-    {:noreply, assign(socket, :bin, bin)}
+  def handle_event("update_global", %{"global" => global}, socket) do
+    {:noreply, assign(socket, :global, global)}
   end
 
   @impl true
-  def handle_event("save_bin", _params, socket) do
+  def handle_event("save_global", %{"global" => global_content}, socket) do
+    # Read from form params to ensure we have the current textarea value
     socket =
       try do
-        case Caddy.set_bin(socket.assigns.bin) do
-          :ok ->
-            put_flash(socket, :info, "Binary path updated successfully")
+        Caddy.set_global(global_content)
+        Caddy.save_config()
 
-          {:error, reason} ->
-            put_flash(socket, :error, "Failed to set binary: #{format_error(reason)}")
-        end
-      rescue
-        error ->
-          put_flash(socket, :error, "Error: #{Exception.message(error)}")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("save_bin_restart", _params, socket) do
-    socket =
-      try do
-        case Caddy.set_bin!(socket.assigns.bin) do
-          :ok ->
-            put_flash(socket, :info, "Binary path updated and server restarted")
-
-          {:error, reason} ->
-            put_flash(socket, :error, "Failed: #{format_error(reason)}")
-        end
-      rescue
-        error ->
-          put_flash(socket, :error, "Error: #{Exception.message(error)}")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("update_caddyfile", %{"caddyfile" => caddyfile}, socket) do
-    {:noreply, assign(socket, :caddyfile, caddyfile)}
-  end
-
-  @impl true
-  def handle_event("save_caddyfile", _params, socket) do
-    socket =
-      try do
-        Caddy.set_caddyfile(socket.assigns.caddyfile)
+        # Re-read from server to ensure consistency
+        saved_global = Caddy.get_global()
 
         socket
-        |> put_flash(:info, "Caddyfile saved to memory")
+        |> assign(:global, saved_global)
+        |> put_flash(:info, "Global options saved")
         |> assign(:validation_result, nil)
         |> assign(:adaptation_result, nil)
       rescue
         error ->
-          put_flash(socket, :error, "Failed to save: #{Exception.message(error)}")
+          socket
+          |> assign(:global, global_content)
+          |> put_flash(:error, "Failed to save: #{Exception.message(error)}")
+      end
+
+    {:noreply, socket}
+  end
+
+  # Additionals management events
+  @impl true
+  def handle_event("update_new_additional", %{"name" => name, "content" => content}, socket) do
+    {:noreply,
+     socket
+     |> assign(:new_additional_name, name)
+     |> assign(:new_additional_content, content)}
+  end
+
+  @impl true
+  def handle_event("add_additional", %{"name" => name, "content" => content}, socket) do
+    name = String.trim(name)
+
+    socket =
+      if name != "" do
+        try do
+          Caddy.add_additional(name, content)
+          Caddy.save_config()
+          additionals = Caddy.get_additionals()
+
+          socket
+          |> assign(:additionals, additionals)
+          |> assign(:new_additional_name, "")
+          |> assign(:new_additional_content, "")
+          |> put_flash(:info, "Additional '#{name}' added")
+        rescue
+          error ->
+            put_flash(socket, :error, "Failed to add additional: #{Exception.message(error)}")
+        end
+      else
+        put_flash(socket, :error, "Additional name cannot be empty")
       end
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("validate", _params, socket) do
+  def handle_event("edit_additional", %{"name" => name}, socket) do
+    additional = Enum.find(socket.assigns.additionals, &(&1.name == name))
+    {:noreply, assign(socket, :editing_additional, additional)}
+  end
+
+  @impl true
+  def handle_event("cancel_edit_additional", _params, socket) do
+    {:noreply, assign(socket, :editing_additional, nil)}
+  end
+
+  @impl true
+  def handle_event("update_editing_additional", %{"content" => content}, socket) do
+    editing_additional = socket.assigns.editing_additional
+    {:noreply, assign(socket, :editing_additional, %{editing_additional | content: content})}
+  end
+
+  @impl true
+  def handle_event("save_additional", %{"content" => content}, socket) do
+    editing_additional = socket.assigns.editing_additional
+    name = editing_additional.name
+
     socket =
       try do
-        case Caddy.validate_caddyfile(socket.assigns.caddyfile) do
+        Caddy.update_additional(name, content)
+        Caddy.save_config()
+        additionals = Caddy.get_additionals()
+
+        socket
+        |> assign(:additionals, additionals)
+        |> assign(:editing_additional, nil)
+        |> put_flash(:info, "Additional '#{name}' updated")
+      rescue
+        error ->
+          put_flash(socket, :error, "Failed to update additional: #{Exception.message(error)}")
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("remove_additional", %{"name" => name}, socket) do
+    socket =
+      try do
+        Caddy.remove_additional(name)
+        Caddy.save_config()
+        additionals = Caddy.get_additionals()
+
+        socket
+        |> assign(:additionals, additionals)
+        |> put_flash(:info, "Additional '#{name}' removed")
+      rescue
+        error ->
+          put_flash(socket, :error, "Failed to remove additional: #{Exception.message(error)}")
+      end
+
+    {:noreply, socket}
+  end
+
+  # Site management events
+  @impl true
+  def handle_event("update_new_site", %{"address" => address, "config" => config}, socket) do
+    {:noreply,
+     socket
+     |> assign(:new_site_address, address)
+     |> assign(:new_site_config, config)}
+  end
+
+  @impl true
+  def handle_event("add_site", %{"address" => address, "config" => config}, socket) do
+    address = String.trim(address)
+
+    socket =
+      if address != "" do
+        try do
+          Caddy.add_site(address, config)
+          Caddy.save_config()
+          sites = Caddy.get_sites()
+
+          socket
+          |> assign(:sites, sites)
+          |> assign(:new_site_address, "")
+          |> assign(:new_site_config, "")
+          |> put_flash(:info, "Site '#{address}' added")
+        rescue
+          error ->
+            put_flash(socket, :error, "Failed to add site: #{Exception.message(error)}")
+        end
+      else
+        put_flash(socket, :error, "Site address cannot be empty")
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("edit_site", %{"address" => address}, socket) do
+    site = Enum.find(socket.assigns.sites, &(&1.address == address))
+    {:noreply, assign(socket, :editing_site, site)}
+  end
+
+  @impl true
+  def handle_event("cancel_edit_site", _params, socket) do
+    {:noreply, assign(socket, :editing_site, nil)}
+  end
+
+  @impl true
+  def handle_event("update_editing_site", %{"config" => config}, socket) do
+    editing_site = socket.assigns.editing_site
+    {:noreply, assign(socket, :editing_site, %{editing_site | config: config})}
+  end
+
+  @impl true
+  def handle_event("save_site", %{"config" => config}, socket) do
+    editing_site = socket.assigns.editing_site
+    address = editing_site.address
+
+    socket =
+      try do
+        Caddy.update_site(address, config)
+        Caddy.save_config()
+        sites = Caddy.get_sites()
+
+        socket
+        |> assign(:sites, sites)
+        |> assign(:editing_site, nil)
+        |> put_flash(:info, "Site '#{address}' updated")
+      rescue
+        error ->
+          put_flash(socket, :error, "Failed to update site: #{Exception.message(error)}")
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("remove_site", %{"address" => address}, socket) do
+    socket =
+      try do
+        Caddy.remove_site(address)
+        Caddy.save_config()
+        sites = Caddy.get_sites()
+
+        socket
+        |> assign(:sites, sites)
+        |> put_flash(:info, "Site '#{address}' removed")
+      rescue
+        error ->
+          put_flash(socket, :error, "Failed to remove site: #{Exception.message(error)}")
+      end
+
+    {:noreply, socket}
+  end
+
+  # Validation and sync events
+  @impl true
+  def handle_event("validate", _params, socket) do
+    caddyfile = Caddy.get_caddyfile()
+
+    socket =
+      try do
+        case Caddy.validate_caddyfile(caddyfile) do
           {:ok, _} ->
             assign(socket, :validation_result, {:success, "Configuration is valid"})
 
@@ -148,9 +325,11 @@ defmodule CaddyDashboardWeb.ConfigLive do
 
   @impl true
   def handle_event("adapt", _params, socket) do
+    caddyfile = Caddy.get_caddyfile()
+
     socket =
       try do
-        case Caddy.adapt(socket.assigns.caddyfile) do
+        case Caddy.adapt(caddyfile) do
           {:ok, json} ->
             formatted_json = Jason.encode!(json, pretty: true)
             assign(socket, :adaptation_result, {:success, formatted_json})
@@ -186,57 +365,6 @@ defmodule CaddyDashboardWeb.ConfigLive do
   end
 
   @impl true
-  def handle_event("update_new_env", %{"key" => key, "value" => value}, socket) do
-    {:noreply, socket |> assign(:new_env_key, key) |> assign(:new_env_value, value)}
-  end
-
-  @impl true
-  def handle_event("add_env", _params, socket) do
-    key = String.trim(socket.assigns.new_env_key)
-    value = String.trim(socket.assigns.new_env_value)
-
-    socket =
-      if key != "" do
-        env = socket.assigns.env ++ [{key, value}]
-
-        socket
-        |> assign(:env, env)
-        |> assign(:new_env_key, "")
-        |> assign(:new_env_value, "")
-        |> save_env_to_config(env)
-      else
-        put_flash(socket, :error, "Environment variable key cannot be empty")
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("remove_env", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
-    env = List.delete_at(socket.assigns.env, index)
-
-    socket =
-      socket
-      |> assign(:env, env)
-      |> save_env_to_config(env)
-
-    {:noreply, socket}
-  end
-
-  defp save_env_to_config(socket, env) do
-    try do
-      config = Caddy.get_config()
-      new_config = %{config | env: env}
-      Caddy.set_config(new_config)
-      put_flash(socket, :info, "Environment variables updated")
-    rescue
-      error ->
-        put_flash(socket, :error, "Failed to save env: #{Exception.message(error)}")
-    end
-  end
-
-  @impl true
   def handle_event("backup", _params, socket) do
     socket =
       try do
@@ -263,9 +391,9 @@ defmodule CaddyDashboardWeb.ConfigLive do
           {:ok, config} ->
             socket
             |> put_flash(:info, "Configuration restored from backup")
-            |> assign(:bin, config.bin || "")
-            |> assign(:caddyfile, config.caddyfile || "")
-            |> assign(:env, config.env || [])
+            |> assign(:global, config.global || "")
+            |> assign(:additionals, config.additionals || [])
+            |> assign(:sites, config.sites || [])
             |> assign(:validation_result, nil)
             |> assign(:adaptation_result, nil)
 
@@ -299,10 +427,74 @@ defmodule CaddyDashboardWeb.ConfigLive do
     {:noreply, socket}
   end
 
+  # ============================================================================
+  # Private Helper Functions
+  # ============================================================================
+
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp format_error({:adaptation_failed, msg}), do: "Adaptation failed: #{msg}"
   defp format_error(reason), do: inspect(reason)
+
+  # Assemble Caddyfile from the 3 parts (local preview, not from server)
+  defp assemble_caddyfile(global, additionals, sites) do
+    parts = []
+
+    # Global options block
+    parts =
+      if global && String.trim(global) != "" do
+        parts ++ ["{\n" <> indent_content(global) <> "\n}"]
+      else
+        parts
+      end
+
+    # Additional directives
+    parts =
+      Enum.reduce(additionals, parts, fn %{content: content}, acc ->
+        if String.trim(content) != "" do
+          acc ++ [String.trim(content)]
+        else
+          acc
+        end
+      end)
+
+    # Site blocks
+    site_blocks =
+      Enum.map(sites, fn site ->
+        config = site.config || ""
+
+        if String.trim(config) == "" do
+          "#{site.address} {\n}"
+        else
+          "#{site.address} {\n" <> indent_content(config) <> "\n}"
+        end
+      end)
+
+    parts = parts ++ site_blocks
+
+    if parts == [] do
+      "# Empty Caddyfile\n# Add global options, additionals, or sites to see the preview."
+    else
+      Enum.join(parts, "\n\n")
+    end
+  end
+
+  defp indent_content(content) do
+    content
+    |> String.trim()
+    |> String.split("\n")
+    |> Enum.map(&("  " <> &1))
+    |> Enum.join("\n")
+  end
+
+  defp line_count(content) when is_binary(content) do
+    content
+    |> String.trim()
+    |> String.split("\n")
+    |> length()
+  end
+
+  defp line_count(_), do: 0
 
   @impl true
   def render(assigns) do
@@ -344,18 +536,20 @@ defmodule CaddyDashboardWeb.ConfigLive do
   defp external_mode_config(assigns) do
     ~H"""
     <div class="space-y-6">
-      <!-- Connection Info -->
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
+      <!-- Connection Info (collapsible) -->
+      <div class="collapse collapse-arrow bg-base-100 shadow-xl">
+        <input type="checkbox" checked />
+        <div class="collapse-title">
           <h2 class="card-title">
-            <.icon name="hero-signal" class="size-5" />
-            External Caddy Connection
+            <.icon name="hero-signal" class="size-5" /> External Caddy Connection
           </h2>
-          <p class="text-base-content/60">
+        </div>
+        <div class="collapse-content">
+          <p class="text-base-content/60 mb-4">
             Caddy is managed externally (e.g., systemd, Docker). This library communicates with it via the Admin API.
           </p>
 
-          <div class="stats shadow mt-4">
+          <div class="stats shadow">
             <div class="stat">
               <div class="stat-title">Admin API URL</div>
               <div class="stat-value text-lg font-mono">{@admin_url}</div>
@@ -364,69 +558,43 @@ defmodule CaddyDashboardWeb.ConfigLive do
             <div class="stat">
               <div class="stat-title">Health Check Interval</div>
               <div class="stat-value text-lg">{div(@health_interval, 1000)}s</div>
-              <div class="stat-desc">Configure via <code>config :caddy, health_interval: ...</code></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- System Commands -->
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">
-            <.icon name="hero-command-line" class="size-5" />
-            System Commands
-          </h2>
-          <p class="text-base-content/60">
-            Commands used for lifecycle management of the external Caddy process.
-          </p>
-
-          <%= if @commands == [] do %>
-            <div class="alert alert-info mt-4">
-              <.icon name="hero-information-circle" class="size-5" />
-              <div>
-                <p class="font-semibold">No commands configured</p>
-                <p class="text-sm">
-                  Configure commands in your application config:
-                </p>
-                <pre class="text-xs mt-2 bg-base-200 p-2 rounded whitespace-pre-wrap">config :caddy, commands: [start: "systemctl start caddy", stop: "systemctl stop caddy", restart: "systemctl restart caddy"]</pre>
+              <div class="stat-desc">
+                Configure via <code>config :caddy, health_interval: ...</code>
               </div>
             </div>
-          <% else %>
-            <div class="overflow-x-auto mt-4">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Command</th>
-                    <th>Shell Command</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <%= for {name, cmd} <- @commands do %>
+          </div>
+
+          <!-- System Commands -->
+          <%= if @commands != [] do %>
+            <div class="mt-4">
+              <h3 class="font-semibold mb-2">
+                <.icon name="hero-command-line" class="size-4" /> System Commands
+              </h3>
+              <div class="overflow-x-auto">
+                <table class="table table-sm">
+                  <thead>
                     <tr>
-                      <td class="font-semibold">{name}</td>
-                      <td class="font-mono text-sm">{cmd}</td>
+                      <th>Command</th>
+                      <th>Shell Command</th>
                     </tr>
-                  <% end %>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    <%= for {name, cmd} <- @commands do %>
+                      <tr>
+                        <td class="font-semibold">{name}</td>
+                        <td class="font-mono text-sm">{cmd}</td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
             </div>
           <% end %>
         </div>
       </div>
 
-      <!-- Configuration Note -->
-      <div class="alert">
-        <.icon name="hero-light-bulb" class="size-5" />
-        <div>
-          <p class="font-semibold">External Mode</p>
-          <p class="text-sm">
-            In external mode, Caddy's configuration is managed separately (e.g., via /etc/caddy/Caddyfile).
-            Use the <a href="/runtime" class="link link-primary">Runtime Config</a> page to view and modify
-            the running Caddy's configuration via the Admin API.
-          </p>
-        </div>
-      </div>
+      <!-- Config Editor (same as embedded mode) -->
+      <.config_editor {assigns} />
     </div>
     """
   end
@@ -438,19 +606,28 @@ defmodule CaddyDashboardWeb.ConfigLive do
   defp embedded_mode_config(assigns) do
     ~H"""
     <div class="space-y-6">
+      <.config_editor {assigns} />
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # Shared Config Editor Component
+  # ============================================================================
+
+  defp config_editor(assigns) do
+    ~H"""
+    <div class="space-y-6">
       <!-- Header Actions -->
       <div class="flex justify-end gap-2">
         <button phx-click="backup" class="btn btn-outline btn-sm">
-          <.icon name="hero-archive-box-arrow-down" class="size-4" />
-          Backup
+          <.icon name="hero-archive-box-arrow-down" class="size-4" /> Backup
         </button>
         <button phx-click="restore" class="btn btn-outline btn-sm">
-          <.icon name="hero-arrow-uturn-left" class="size-4" />
-          Restore
+          <.icon name="hero-arrow-uturn-left" class="size-4" /> Restore
         </button>
         <button phx-click="save_all" class="btn btn-primary btn-sm">
-          <.icon name="hero-arrow-down-tray" class="size-4" />
-          Save to Disk
+          <.icon name="hero-arrow-down-tray" class="size-4" /> Save to Disk
         </button>
       </div>
 
@@ -458,232 +635,420 @@ defmodule CaddyDashboardWeb.ConfigLive do
       <div role="tablist" class="tabs tabs-boxed">
         <button
           role="tab"
-          class={["tab", @active_tab == "caddyfile" && "tab-active"]}
+          class={["tab", @active_tab == "global" && "tab-active"]}
           phx-click="switch_tab"
-          phx-value-tab="caddyfile"
+          phx-value-tab="global"
         >
-          <.icon name="hero-document-text" class="size-4 mr-2" />
-          Caddyfile
+          <.icon name="hero-cog-6-tooth" class="size-4 mr-2" /> Global Options
         </button>
         <button
           role="tab"
-          class={["tab", @active_tab == "binary" && "tab-active"]}
+          class={["tab", @active_tab == "additionals" && "tab-active"]}
           phx-click="switch_tab"
-          phx-value-tab="binary"
+          phx-value-tab="additionals"
         >
-          <.icon name="hero-command-line" class="size-4 mr-2" />
-          Binary Path
+          <.icon name="hero-puzzle-piece" class="size-4 mr-2" /> Additionals
+          <span class="badge badge-sm ml-1">{length(@additionals)}</span>
         </button>
         <button
           role="tab"
-          class={["tab", @active_tab == "env" && "tab-active"]}
+          class={["tab", @active_tab == "sites" && "tab-active"]}
           phx-click="switch_tab"
-          phx-value-tab="env"
+          phx-value-tab="sites"
         >
-          <.icon name="hero-variable" class="size-4 mr-2" />
-          Environment
+          <.icon name="hero-globe-alt" class="size-4 mr-2" /> Sites
+          <span class="badge badge-sm ml-1">{length(@sites)}</span>
+        </button>
+        <button
+          role="tab"
+          class={["tab", @active_tab == "preview" && "tab-active"]}
+          phx-click="switch_tab"
+          phx-value-tab="preview"
+        >
+          <.icon name="hero-eye" class="size-4 mr-2" /> Preview
         </button>
       </div>
 
-      <!-- Caddyfile Tab -->
-      <div :if={@active_tab == "caddyfile"} class="space-y-4">
+      <!-- Global Options Tab -->
+      <div :if={@active_tab == "global"} class="space-y-4">
         <div class="card bg-base-100 shadow-xl">
           <div class="card-body">
             <h2 class="card-title">
-              <.icon name="hero-document-text" class="size-5" />
-              Caddyfile Editor
+              <.icon name="hero-cog-6-tooth" class="size-5" /> Global Options
             </h2>
             <p class="text-sm text-base-content/60 mb-4">
-              Write your Caddyfile configuration using native Caddyfile syntax.
+              Global options are placed inside the top-level <code>{"{ }"}</code> block.
+              Enter the content without the outer braces.
             </p>
 
-            <textarea
-              name="caddyfile"
-              rows="18"
-              class="textarea textarea-bordered w-full font-mono text-sm leading-relaxed"
-              placeholder="Enter your Caddyfile configuration..."
-              phx-change="update_caddyfile"
-              phx-debounce="300"
-            >{@caddyfile}</textarea>
+            <form phx-submit="save_global" phx-change="update_global">
+              <textarea
+                name="global"
+                rows="10"
+                class="textarea textarea-bordered w-full font-mono text-sm leading-relaxed"
+                placeholder="debug&#10;admin unix//tmp/caddy.sock&#10;auto_https off"
+                phx-debounce="300"
+              ><%= @global %></textarea>
 
-            <div class="flex flex-wrap gap-2 mt-4">
-              <button phx-click="save_caddyfile" class="btn btn-primary">
-                <.icon name="hero-check" class="size-5" />
-                Save to Memory
-              </button>
+              <div class="flex flex-wrap gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">
+                  <.icon name="hero-check" class="size-5" /> Save Global Options
+                </button>
 
-              <button phx-click="validate" class="btn btn-secondary">
-                <.icon name="hero-clipboard-document-check" class="size-5" />
-                Validate
-              </button>
+                <button type="button" phx-click="validate" class="btn btn-secondary">
+                  <.icon name="hero-clipboard-document-check" class="size-5" /> Validate All
+                </button>
 
-              <button phx-click="adapt" class="btn btn-accent">
-                <.icon name="hero-code-bracket" class="size-5" />
-                Adapt to JSON
-              </button>
+                <button type="button" phx-click="adapt" class="btn btn-accent">
+                  <.icon name="hero-code-bracket" class="size-5" /> Adapt to JSON
+                </button>
 
-              <button phx-click="sync" class="btn btn-info">
-                <.icon name="hero-arrow-path" class="size-5" />
-                Sync to Caddy
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Validation Result -->
-        <div :if={@validation_result} class="card bg-base-100 shadow">
-          <div class="card-body">
-            <h3 class="card-title text-lg">Validation Result</h3>
-            <div :if={elem(@validation_result, 0) == :success} class="alert alert-success">
-              <.icon name="hero-check-circle" class="size-5" />
-              <span>{elem(@validation_result, 1)}</span>
-            </div>
-            <div :if={elem(@validation_result, 0) == :error} class="alert alert-error">
-              <.icon name="hero-exclamation-circle" class="size-5" />
-              <pre class="text-xs overflow-x-auto">{elem(@validation_result, 1)}</pre>
-            </div>
-          </div>
-        </div>
-
-        <!-- Adaptation Result -->
-        <div :if={@adaptation_result} class="card bg-base-100 shadow">
-          <div class="card-body">
-            <h3 class="card-title text-lg">Adapted JSON</h3>
-            <div :if={elem(@adaptation_result, 0) == :success}>
-              <div class="alert alert-success mb-4">
-                <.icon name="hero-check-circle" class="size-5" />
-                <span>Successfully adapted to JSON</span>
+                <button type="button" phx-click="sync" class="btn btn-info">
+                  <.icon name="hero-arrow-path" class="size-5" /> Sync to Caddy
+                </button>
               </div>
-              <div class="bg-base-200 rounded-lg p-4 overflow-x-auto max-h-96">
-                <pre class="text-xs font-mono">{elem(@adaptation_result, 1)}</pre>
-              </div>
-            </div>
-            <div :if={elem(@adaptation_result, 0) == :error} class="alert alert-error">
-              <.icon name="hero-exclamation-circle" class="size-5" />
-              <pre class="text-xs overflow-x-auto">{elem(@adaptation_result, 1)}</pre>
-            </div>
+            </form>
           </div>
         </div>
+
+        <.validation_results
+          validation_result={@validation_result}
+          adaptation_result={@adaptation_result}
+        />
       </div>
 
-      <!-- Binary Path Tab -->
-      <div :if={@active_tab == "binary"} class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">
-            <.icon name="hero-command-line" class="size-5" />
-            Caddy Binary Path
-          </h2>
-          <p class="text-sm text-base-content/60 mb-4">
-            Path to the Caddy executable that will be managed by this application.
-          </p>
+      <!-- Additionals Tab -->
+      <div :if={@active_tab == "additionals"} class="space-y-4">
+        <!-- Add New Additional -->
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">
+              <.icon name="hero-plus-circle" class="size-5" /> Add New Additional
+            </h2>
+            <p class="text-sm text-base-content/60 mb-4">
+              Snippets, matchers, and other reusable configurations.
+            </p>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Binary Path</span>
-            </label>
-            <input
-              type="text"
-              name="bin"
-              value={@bin}
-              class="input input-bordered font-mono"
-              placeholder="/usr/bin/caddy"
-              phx-change="update_bin"
-              phx-debounce="300"
-            />
-            <label class="label">
-              <span class="label-text-alt text-base-content/50">
-                Common paths: /usr/bin/caddy, /opt/homebrew/bin/caddy
-              </span>
-            </label>
-          </div>
+            <form phx-submit="add_additional" phx-change="update_new_additional">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Name</span>
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={@new_additional_name}
+                  class="input input-bordered font-mono"
+                  placeholder="common-headers, security-snippet, etc."
+                  phx-debounce="300"
+                />
+              </div>
 
-          <div class="flex gap-2 mt-4">
-            <button phx-click="save_bin" class="btn btn-primary">
-              <.icon name="hero-check" class="size-5" />
-              Save Path
-            </button>
-            <button phx-click="save_bin_restart" class="btn btn-warning">
-              <.icon name="hero-arrow-path" class="size-5" />
-              Save & Restart Server
-            </button>
+              <div class="form-control mt-2">
+                <label class="label">
+                  <span class="label-text">Content</span>
+                </label>
+                <textarea
+                  name="content"
+                  rows="4"
+                  class="textarea textarea-bordered w-full font-mono text-sm"
+                  placeholder="(common) {&#10;  header X-Frame-Options DENY&#10;  header X-Content-Type-Options nosniff&#10;}"
+                  phx-debounce="300"
+                ><%= @new_additional_content %></textarea>
+              </div>
+
+              <div class="mt-4">
+                <button type="submit" class="btn btn-primary">
+                  <.icon name="hero-plus" class="size-5" /> Add Additional
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </div>
 
-      <!-- Environment Variables Tab -->
-      <div :if={@active_tab == "env"} class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">
-            <.icon name="hero-variable" class="size-5" />
-            Environment Variables
-          </h2>
-          <p class="text-sm text-base-content/60 mb-4">
-            Environment variables passed to the Caddy process when starting.
-          </p>
+        <!-- Additionals List -->
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">
+              <.icon name="hero-puzzle-piece" class="size-5" /> Configured Additionals
+            </h2>
 
-          <!-- Add new env var -->
-          <div class="flex gap-2 mb-4">
-            <input
-              type="text"
-              placeholder="KEY"
-              value={@new_env_key}
-              class="input input-bordered input-sm flex-1 font-mono"
-              phx-change="update_new_env"
-              phx-value-value={@new_env_value}
-              name="key"
-            />
-            <input
-              type="text"
-              placeholder="value"
-              value={@new_env_value}
-              class="input input-bordered input-sm flex-1 font-mono"
-              phx-change="update_new_env"
-              phx-value-key={@new_env_key}
-              name="value"
-            />
-            <button phx-click="add_env" class="btn btn-primary btn-sm">
-              <.icon name="hero-plus" class="size-4" />
-              Add
-            </button>
-          </div>
-
-          <!-- Env vars list -->
-          <div class="overflow-x-auto">
-            <table class="table table-zebra">
-              <thead>
-                <tr>
-                  <th>Key</th>
-                  <th>Value</th>
-                  <th class="w-20">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <%= if @env == [] do %>
-                  <tr>
-                    <td colspan="3" class="text-center text-base-content/50 py-8">
-                      No environment variables configured
-                    </td>
-                  </tr>
-                <% else %>
-                  <%= for {{key, value}, index} <- Enum.with_index(@env) do %>
-                    <tr>
-                      <td class="font-mono text-sm">{key}</td>
-                      <td class="font-mono text-sm">{value}</td>
-                      <td>
-                        <button
-                          phx-click="remove_env"
-                          phx-value-index={index}
-                          class="btn btn-ghost btn-xs text-error"
-                        >
-                          <.icon name="hero-trash" class="size-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  <% end %>
+            <%= if @additionals == [] do %>
+              <div class="alert alert-info">
+                <.icon name="hero-information-circle" class="size-5" />
+                <span>No additionals configured yet. Add your first snippet above.</span>
+              </div>
+            <% else %>
+              <div class="space-y-4">
+                <%= for additional <- @additionals do %>
+                  <div class="border border-base-300 rounded-lg p-4">
+                    <%= if @editing_additional && @editing_additional.name == additional.name do %>
+                      <!-- Edit Mode -->
+                      <form phx-submit="save_additional" class="space-y-3">
+                        <div class="font-mono font-semibold text-primary">{additional.name}</div>
+                        <textarea
+                          name="content"
+                          rows="4"
+                          class="textarea textarea-bordered w-full font-mono text-sm"
+                          phx-debounce="300"
+                        ><%= @editing_additional.content %></textarea>
+                        <div class="flex gap-2">
+                          <button type="submit" class="btn btn-primary btn-sm">
+                            <.icon name="hero-check" class="size-4" /> Save
+                          </button>
+                          <button type="button" phx-click="cancel_edit_additional" class="btn btn-ghost btn-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    <% else %>
+                      <!-- View Mode -->
+                      <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                          <div class="font-mono font-semibold text-primary">{additional.name}</div>
+                          <pre class="text-xs font-mono text-base-content/70 mt-2 bg-base-200 p-2 rounded overflow-x-auto">{additional.content}</pre>
+                        </div>
+                        <div class="flex gap-1 ml-4">
+                          <button
+                            phx-click="edit_additional"
+                            phx-value-name={additional.name}
+                            class="btn btn-ghost btn-xs"
+                          >
+                            <.icon name="hero-pencil" class="size-4" />
+                          </button>
+                          <button
+                            phx-click="remove_additional"
+                            phx-value-name={additional.name}
+                            class="btn btn-ghost btn-xs text-error"
+                            data-confirm={"Are you sure you want to remove #{additional.name}?"}
+                          >
+                            <.icon name="hero-trash" class="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
                 <% end %>
-              </tbody>
-            </table>
+              </div>
+            <% end %>
           </div>
+        </div>
+
+        <.validation_results
+          validation_result={@validation_result}
+          adaptation_result={@adaptation_result}
+        />
+      </div>
+
+      <!-- Sites Tab -->
+      <div :if={@active_tab == "sites"} class="space-y-4">
+        <!-- Add New Site -->
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">
+              <.icon name="hero-plus-circle" class="size-5" /> Add New Site
+            </h2>
+
+            <form phx-submit="add_site" phx-change="update_new_site">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Site Address</span>
+                </label>
+                <input
+                  type="text"
+                  name="address"
+                  value={@new_site_address}
+                  class="input input-bordered font-mono"
+                  placeholder="example.com, localhost:8080, :443"
+                  phx-debounce="300"
+                />
+              </div>
+
+              <div class="form-control mt-2">
+                <label class="label">
+                  <span class="label-text">Site Configuration</span>
+                </label>
+                <textarea
+                  name="config"
+                  rows="4"
+                  class="textarea textarea-bordered w-full font-mono text-sm"
+                  placeholder="reverse_proxy localhost:3000&#10;encode gzip"
+                  phx-debounce="300"
+                ><%= @new_site_config %></textarea>
+              </div>
+
+              <div class="mt-4">
+                <button type="submit" class="btn btn-primary">
+                  <.icon name="hero-plus" class="size-5" /> Add Site
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Sites List -->
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">
+              <.icon name="hero-globe-alt" class="size-5" /> Configured Sites
+            </h2>
+
+            <%= if @sites == [] do %>
+              <div class="alert alert-info">
+                <.icon name="hero-information-circle" class="size-5" />
+                <span>No sites configured yet. Add your first site above.</span>
+              </div>
+            <% else %>
+              <div class="space-y-4">
+                <%= for site <- @sites do %>
+                  <div class="border border-base-300 rounded-lg p-4">
+                    <%= if @editing_site && @editing_site.address == site.address do %>
+                      <!-- Edit Mode -->
+                      <form phx-submit="save_site" class="space-y-3">
+                        <div class="font-mono font-semibold text-primary">{site.address}</div>
+                        <textarea
+                          name="config"
+                          rows="4"
+                          class="textarea textarea-bordered w-full font-mono text-sm"
+                          phx-debounce="300"
+                        ><%= @editing_site.config %></textarea>
+                        <div class="flex gap-2">
+                          <button type="submit" class="btn btn-primary btn-sm">
+                            <.icon name="hero-check" class="size-4" /> Save
+                          </button>
+                          <button type="button" phx-click="cancel_edit_site" class="btn btn-ghost btn-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    <% else %>
+                      <!-- View Mode -->
+                      <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                          <div class="font-mono font-semibold text-primary">{site.address}</div>
+                          <pre class="text-xs font-mono text-base-content/70 mt-2 bg-base-200 p-2 rounded overflow-x-auto">{site.config}</pre>
+                        </div>
+                        <div class="flex gap-1 ml-4">
+                          <button
+                            phx-click="edit_site"
+                            phx-value-address={site.address}
+                            class="btn btn-ghost btn-xs"
+                          >
+                            <.icon name="hero-pencil" class="size-4" />
+                          </button>
+                          <button
+                            phx-click="remove_site"
+                            phx-value-address={site.address}
+                            class="btn btn-ghost btn-xs text-error"
+                            data-confirm={"Are you sure you want to remove #{site.address}?"}
+                          >
+                            <.icon name="hero-trash" class="size-4" />
+                          </button>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <.validation_results
+          validation_result={@validation_result}
+          adaptation_result={@adaptation_result}
+        />
+      </div>
+
+      <!-- Preview Tab -->
+      <div :if={@active_tab == "preview"} class="space-y-4">
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">
+                <.icon name="hero-eye" class="size-5" /> Combined Caddyfile Preview
+              </h2>
+              <div class="flex gap-2">
+                <button phx-click="validate" class="btn btn-secondary btn-sm">
+                  <.icon name="hero-clipboard-document-check" class="size-4" /> Validate
+                </button>
+                <button phx-click="adapt" class="btn btn-accent btn-sm">
+                  <.icon name="hero-code-bracket" class="size-4" /> Adapt to JSON
+                </button>
+                <button phx-click="sync" class="btn btn-info btn-sm">
+                  <.icon name="hero-arrow-path" class="size-4" /> Sync to Caddy
+                </button>
+              </div>
+            </div>
+            <p class="text-sm text-base-content/60 mb-4">
+              This is the combined Caddyfile that will be used by Caddy, assembled from Global
+              Options, Additionals, and Sites.
+              Changes shown here reflect your current edits (before saving).
+            </p>
+
+            <div class="bg-base-200 rounded-lg p-4 overflow-auto max-h-[600px]">
+              <pre class="text-sm font-mono whitespace-pre-wrap"><%= assemble_caddyfile(@global, @additionals, @sites) %></pre>
+            </div>
+
+            <div class="mt-4 flex items-center gap-4 text-sm text-base-content/60">
+              <div class="flex items-center gap-2">
+                <span class="badge badge-outline badge-sm">Global</span>
+                <span>{line_count(@global)} lines</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-outline badge-sm">Additionals</span>
+                <span>{length(@additionals)} item(s)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-outline badge-sm">Sites</span>
+                <span>{length(@sites)} site(s)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <.validation_results
+          validation_result={@validation_result}
+          adaptation_result={@adaptation_result}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  defp validation_results(assigns) do
+    ~H"""
+    <!-- Validation Result -->
+    <div :if={@validation_result} class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h3 class="card-title text-lg">Validation Result</h3>
+        <div :if={elem(@validation_result, 0) == :success} class="alert alert-success">
+          <.icon name="hero-check-circle" class="size-5" />
+          <span>{elem(@validation_result, 1)}</span>
+        </div>
+        <div :if={elem(@validation_result, 0) == :error} class="alert alert-error">
+          <.icon name="hero-exclamation-circle" class="size-5" />
+          <pre class="text-xs overflow-x-auto">{elem(@validation_result, 1)}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Adaptation Result -->
+    <div :if={@adaptation_result} class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h3 class="card-title text-lg">Adapted JSON</h3>
+        <div :if={elem(@adaptation_result, 0) == :success}>
+          <div class="alert alert-success mb-4">
+            <.icon name="hero-check-circle" class="size-5" />
+            <span>Successfully adapted to JSON</span>
+          </div>
+          <div class="bg-base-200 rounded-lg p-4 overflow-x-auto max-h-96">
+            <pre class="text-xs font-mono">{elem(@adaptation_result, 1)}</pre>
+          </div>
+        </div>
+        <div :if={elem(@adaptation_result, 0) == :error} class="alert alert-error">
+          <.icon name="hero-exclamation-circle" class="size-5" />
+          <pre class="text-xs overflow-x-auto">{elem(@adaptation_result, 1)}</pre>
         </div>
       </div>
     </div>
