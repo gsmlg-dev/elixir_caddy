@@ -7,6 +7,9 @@ defmodule CaddyDashboard.Application do
 
   @impl true
   def start(_type, _args) do
+    # Initialize dashboard settings (loads from file and applies to config)
+    CaddyDashboard.Settings.init()
+
     # Note: Caddy.Supervisor is auto-started by the :caddy application
     # so we don't add it here to avoid "already started" errors
     children = [
