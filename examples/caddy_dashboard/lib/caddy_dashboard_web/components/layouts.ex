@@ -29,6 +29,8 @@ defmodule CaddyDashboardWeb.Layouts do
           <.nav_link path="/server" icon="hero-cog-6-tooth" label="Server Control" current={@current_path} />
           <.nav_link path="/logs" icon="hero-document-magnifying-glass" label="Logs" current={@current_path} />
           <.nav_link path="/telemetry" icon="hero-signal" label="Telemetry" current={@current_path} />
+          <div class="divider my-2 text-xs text-base-content/40">System</div>
+          <.nav_link path="/settings" icon="hero-cog-8-tooth" label="Settings" current={@current_path} />
         </nav>
         <div class="p-4 border-t border-base-300">
           <div class="flex items-center justify-between">
