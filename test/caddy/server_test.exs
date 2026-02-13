@@ -51,17 +51,20 @@ defmodule Caddy.ServerTest do
       ConfigProvider.set_caddyfile(caddyfile)
       config = ConfigProvider.get_config()
 
-      assert config.caddyfile == caddyfile
+      # Config stores parsed parts, not raw caddyfile
+      assert String.contains?(config.global, "debug")
+      assert String.contains?(config.global, "auto_https off")
     end
 
     test "can append to caddyfile configuration", %{original_config: _original} do
       ConfigProvider.set_caddyfile("{ debug }")
       ConfigProvider.append_caddyfile("example.com { reverse_proxy localhost:3000 }")
 
-      config = ConfigProvider.get_config()
+      # Check assembled caddyfile contains both
+      caddyfile = ConfigProvider.get_caddyfile()
 
-      assert String.contains?(config.caddyfile, "{ debug }")
-      assert String.contains?(config.caddyfile, "example.com")
+      assert String.contains?(caddyfile, "debug")
+      assert String.contains?(caddyfile, "example.com")
     end
   end
 
