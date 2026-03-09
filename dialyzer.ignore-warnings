@@ -6,6 +6,8 @@ lib/caddy/telemetry.ex:69
 
 # Defensive pattern matching in Server.External
 # These patterns handle potential edge cases from external APIs
+# Line 1: Application.get_env default of `true` means `false` branch never matches at compile time
+lib/caddy/server/external.ex:1
 lib/caddy/server/external.ex:173
 lib/caddy/server/external.ex:225
 lib/caddy/server/external.ex:242

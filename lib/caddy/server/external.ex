@@ -105,9 +105,9 @@ defmodule Caddy.Server.External do
   """
   @spec get_caddyfile() :: binary()
   def get_caddyfile do
+    # Api.get_config/0 returns a bare map (not a tuple) on success, nil on error
     case Api.get_config() do
-      {:ok, _resp, config} when is_map(config) ->
-        # Return JSON representation since external Caddy uses JSON config
+      config when is_map(config) ->
         Jason.encode!(config, pretty: true)
 
       _ ->
@@ -337,6 +337,8 @@ defmodule Caddy.Server.External do
     end
   end
 
+  defp execute_shell_command(""), do: {:error, :empty_command}
+
   defp execute_shell_command(cmd_string) do
     # Parse command string into executable and args
     [executable | args] = String.split(cmd_string)
@@ -377,26 +379,27 @@ defmodule Caddy.Server.External do
 
       :ok
     else
-      # Adapt and push via API
-      case Api.adapt(caddyfile) do
-        {:ok, _resp, json_config} when is_map(json_config) ->
-          case Api.load(json_config) do
-            {:ok, _resp, _body} ->
-              Caddy.Telemetry.log_info("Configuration pushed to external Caddy",
-                module: __MODULE__
-              )
+      # Api.adapt/1 returns a bare map (not a tuple): non-empty map on success, %{} on error
+      json_config = Api.adapt(caddyfile)
 
-              :ok
+      if is_map(json_config) and map_size(json_config) > 0 do
+        # Api.load/1 returns %{status: code, body: body} or %{status: 0, body: nil} on error
+        case Api.load(json_config) do
+          %{status: status} when status in 200..299 ->
+            Caddy.Telemetry.log_info("Configuration pushed to external Caddy",
+              module: __MODULE__
+            )
 
-            {:error, reason} ->
-              {:error, {:load_failed, reason}}
-          end
+            :ok
 
-        {:ok, _resp, _non_map} ->
-          {:error, :invalid_adapt_response}
+          %{status: 0} ->
+            {:error, :load_connection_failed}
 
-        {:error, reason} ->
-          {:error, {:adapt_failed, reason}}
+          %{status: status} ->
+            {:error, {:load_failed, status}}
+        end
+      else
+        {:error, :invalid_adapt_response}
       end
     end
   end

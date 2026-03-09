@@ -27,8 +27,6 @@ defmodule Caddy.Admin.Api do
       # Check server health
       {:ok, status} = Caddy.Admin.Api.health_check()
   """
-  require Logger
-
   defp request_module, do: Application.get_env(:caddy, :request_module, Caddy.Admin.Request)
 
   @doc """
@@ -89,10 +87,16 @@ defmodule Caddy.Admin.Api do
   def load(conf)
 
   def load(conf) when is_map(conf) do
-    get_config()
-    |> Map.merge(conf)
-    |> Jason.encode!()
-    |> load()
+    case get_config() do
+      current when is_map(current) ->
+        current
+        |> Map.merge(conf)
+        |> Jason.encode!()
+        |> load()
+
+      nil ->
+        %{status: 0, body: nil}
+    end
   end
 
   def load(conf) when is_binary(conf) do
