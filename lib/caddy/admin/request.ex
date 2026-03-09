@@ -18,7 +18,6 @@ defmodule Caddy.Admin.Request do
 
   alias Caddy.Admin.Request
   alias Caddy.Admin.Transport
-  require Logger
 
   @type t :: %__MODULE__{
           status: integer(),
@@ -130,9 +129,21 @@ defmodule Caddy.Admin.Request do
     # # The response might be chunked, or upgraded in case you have attached to the container
     # # Now I can receive the response. Because of `:active, false} I need to explicitly
     # # ask for data, otherwise it gets send to the process as messages.
-    case :proplists.get_value(:"Content-Type", resp.headers) do
-      "application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
-      _ -> {:ok, resp, read_body(socket, resp)}
+    case read_body(socket, resp) do
+      {:error, reason} ->
+        {:error, reason}
+
+      body ->
+        case :proplists.get_value(:"Content-Type", resp.headers) do
+          "application/json" ->
+            case Jason.decode(body) do
+              {:ok, decoded} -> {:ok, resp, decoded}
+              {:error, reason} -> {:error, {:decode_error, reason}}
+            end
+
+          _ ->
+            {:ok, resp, body}
+        end
     end
   end
 
@@ -168,7 +179,12 @@ defmodule Caddy.Admin.Request do
   defp read_chunked_body(socket, resp), do: read_chunked_body(socket, resp, [])
 
   defp read_chunked_body(socket, resp, acc) do
-    Logger.debug("read_chunked_body: #{inspect(socket)} #{inspect(resp)} #{inspect(acc)}")
+    Caddy.Telemetry.log_debug("read_chunked_body called",
+      module: __MODULE__,
+      socket: inspect(socket),
+      acc_length: length(acc)
+    )
+
     :inet.setopts(socket, [{:packet, :line}])
 
     case :gen_tcp.recv(socket, 0, 5000) do

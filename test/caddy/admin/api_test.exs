@@ -91,6 +91,15 @@ defmodule Caddy.Admin.ApiTest do
       result = Api.load("{invalid}")
       assert result.status == 400
     end
+
+    # T018: nil runtime config guard (no exception raised)
+    test "returns zero status when runtime config is unavailable (nil guard)" do
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
+        {:error, :econnrefused}
+      end)
+
+      assert %{status: 0, body: nil} = Api.load(%{"foo" => "bar"})
+    end
   end
 
   # ============================================================================
@@ -368,6 +377,44 @@ defmodule Caddy.Admin.ApiTest do
       end)
 
       assert %{"error" => "syntax error"} = Api.adapt("{ invalid syntax")
+    end
+
+    # T022: transport error (socket closed) returns empty map without exception
+    test "returns empty map on socket closed transport error" do
+      expect(Caddy.Admin.RequestMock, :post, 1, fn "/adapt", _, "application/json" ->
+        {:error, :closed}
+      end)
+
+      assert %{} = Api.adapt("some caddyfile content")
+    end
+  end
+
+  # ============================================================================
+  # Error handling (T021: transport error propagation)
+  # ============================================================================
+
+  describe "transport error propagation" do
+    # T021: Verify that transport-level errors propagate as structured results (not exceptions)
+    # These tests use the mock to simulate transport failures at the request boundary.
+
+    test "get/1 returns structured error on transport failure without exception" do
+      expect(Caddy.Admin.RequestMock, :get, 1, fn _ ->
+        {:error, :timeout}
+      end)
+
+      result = Api.get("/any/path")
+      assert result.status == 0
+      assert result.body == nil
+    end
+
+    test "load/1 returns structured error on transport failure without exception" do
+      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _, "application/json" ->
+        {:error, :closed}
+      end)
+
+      result = Api.load("{}")
+      assert result.status == 0
+      assert result.body == nil
     end
   end
 
