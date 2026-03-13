@@ -217,7 +217,7 @@ defmodule Caddy.Server.Embedded do
     caddyfile = Config.to_caddyfile(config)
 
     with {:ok, config_map} <- Config.adapt(caddyfile, config.bin),
-         {:ok, cfg} <- Jason.encode(config_map),
+         {:ok, cfg} <- {:ok, JSON.encode!(config_map)},
          :ok <- File.write(Config.init_file(), cfg) do
       {:ok, Config.init_file()}
     else

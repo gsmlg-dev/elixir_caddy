@@ -91,7 +91,7 @@ defmodule Caddy.Admin.Api do
       current when is_map(current) ->
         current
         |> Map.merge(conf)
-        |> Jason.encode!()
+        |> JSON.encode!()
         |> load()
 
       nil ->
@@ -197,7 +197,7 @@ defmodule Caddy.Admin.Api do
   """
   def post_config(path, data) when is_binary(path) do
     start_time = System.monotonic_time()
-    data_string = Jason.encode!(data)
+    data_string = JSON.encode!(data)
 
     case request_module().post("/config/#{path}", data_string, "application/json") do
       {:ok, resp, body} ->
@@ -226,7 +226,7 @@ defmodule Caddy.Admin.Api do
 
   def post_config(data) do
     start_time = System.monotonic_time()
-    data_string = Jason.encode!(data)
+    data_string = JSON.encode!(data)
 
     case request_module().post("/config/", data_string, "application/json") do
       {:ok, resp, body} ->
@@ -258,7 +258,7 @@ defmodule Caddy.Admin.Api do
   """
   def put_config(path, data) when is_binary(path) do
     start_time = System.monotonic_time()
-    data_string = Jason.encode!(data)
+    data_string = JSON.encode!(data)
 
     case request_module().put("/config/#{path}", data_string, "application/json") do
       {:ok, resp, body} ->
@@ -286,7 +286,7 @@ defmodule Caddy.Admin.Api do
 
   def put_config(data) do
     start_time = System.monotonic_time()
-    data_string = Jason.encode!(data)
+    data_string = JSON.encode!(data)
 
     case request_module().put("/config/", data_string, "application/json") do
       {:ok, resp, body} ->
@@ -317,7 +317,7 @@ defmodule Caddy.Admin.Api do
   """
   def patch_config(path, data) when is_binary(path) do
     start_time = System.monotonic_time()
-    data_string = Jason.encode!(data)
+    data_string = JSON.encode!(data)
 
     case request_module().patch("/config/#{path}", data_string, "application/json") do
       {:ok, resp, body} ->
@@ -346,7 +346,7 @@ defmodule Caddy.Admin.Api do
 
   def patch_config(data) do
     start_time = System.monotonic_time()
-    data_string = Jason.encode!(data)
+    data_string = JSON.encode!(data)
 
     case request_module().patch("/config/", data_string, "application/json") do
       {:ok, resp, body} ->
@@ -533,7 +533,7 @@ defmodule Caddy.Admin.Api do
           endpoint: endpoint
         })
 
-        {:ok, Jason.encode!(body)}
+        {:ok, JSON.encode!(body)}
 
       {:ok, %{status: status}, _} ->
         duration = System.monotonic_time() - start_time

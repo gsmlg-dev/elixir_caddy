@@ -33,9 +33,6 @@ defmodule Caddy.ConfigManager.Behaviour do
   @doc "Push in-memory config to running Caddy with options"
   @callback sync_to_caddy(opts :: sync_opts()) :: :ok | {:error, term()}
 
-  @doc "Pull running Caddy config to memory"
-  @callback sync_from_caddy() :: :ok | {:error, term()}
-
   @doc "Check if in-memory and runtime configs are in sync"
   @callback check_sync_status() :: {:ok, sync_status()}
 

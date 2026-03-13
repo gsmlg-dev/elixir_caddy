@@ -15,7 +15,7 @@ compliance fix (direct `Logger.debug` → `Caddy.Telemetry.log_debug`) is includ
 ## Technical Context
 
 **Language/Version**: Elixir ~> 1.18, OTP 27+
-**Primary Dependencies**: Jason (JSON), Telemetry (observability), Mox (test mocking)
+**Primary Dependencies**: built-in JSON, Telemetry (observability), Mox (test mocking)
 **Storage**: N/A (in-memory config state managed by `Caddy.Config` Agent)
 **Testing**: ExUnit + Mox
 **Target Platform**: Linux server (embeddable library)
@@ -62,7 +62,7 @@ specs/001-fix-api-contracts/
 lib/caddy/
 ├── admin/
 │   ├── api.ex           # Fix: nil guard in load/1 map clause; remove unused require Logger
-│   └── request.ex       # Fix: read_body error propagation; safe Jason.decode; Logger→Telemetry
+│   └── request.ex       # Fix: read_body error propagation; safe JSON.decode; Logger→Telemetry
 └── server/
     └── external.ex      # Fix: get_caddyfile/0 pattern; push_initial_config/0 double mismatch;
                          #      execute_shell_command/1 empty guard
@@ -88,7 +88,7 @@ existing files. No new files are required.
 |---|----------|-----------|
 | D1 | Fix `External` callers to consume actual `Api` return types | Minimal change; no public `Api` signature changes |
 | D2 | Guard `Api.load/1` map merge against nil → return `%{status: 0, body: nil}` | Consistent with existing error return pattern |
-| D3 | Use `Jason.decode/1` (safe) instead of `Jason.decode!/1` | Allows error normalization without raising |
+| D3 | Use `JSON.decode/1` (safe) instead of `JSON.decode!/1` | Allows error normalization without raising |
 | D4 | Add empty-string guard in `execute_shell_command/1` → `{:error, :empty_command}` | Makes error explicit and testable |
 | D5 | Replace `Logger.debug` with `Caddy.Telemetry.log_debug` in `request.ex` | Constitution Principle II compliance |
 | D6 | Remove unused `require Logger` from `api.ex` | Credo strict compliance |

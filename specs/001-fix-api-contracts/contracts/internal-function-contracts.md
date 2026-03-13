@@ -78,8 +78,8 @@ internal function signatures and their expected input/output behaviors.
 | Body read error | `{:error, :timeout}` | any | `{:error, :timeout}` |
 | Malformed JSON | `"not json"` binary | `application/json` | `{:error, {:decode_error, reason}}` |
 
-**Before**: `Jason.decode!(read_body(...))` — raises on `{:error, reason}` input.
-**After**: Check read_body result first; use `Jason.decode/1`; propagate errors as tuples.
+**Before**: `JSON.decode!(read_body(...))` — raises on `{:error, reason}` input.
+**After**: Check read_body result first; use `JSON.decode/1`; propagate errors as tuples.
 
 ---
 

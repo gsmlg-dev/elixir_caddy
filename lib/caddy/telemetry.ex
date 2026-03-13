@@ -68,8 +68,7 @@ defmodule Caddy.Telemetry do
   ## Event Types
 
   - `:sync_to_caddy` - When syncing in-memory config to running Caddy
-  - `:sync_from_caddy` - When pulling config from running Caddy
-  - `:drift_check` - When checking for config drift
+- `:drift_check` - When checking for config drift
   - `:rollback` - When rolling back to previous config
   - `:apply` - When applying runtime config directly
   - `:validate` - When validating config
@@ -330,7 +329,6 @@ defmodule Caddy.Telemetry do
       [:caddy, :system, :uptime],
       # ConfigManager events
       [:caddy, :config_manager, :sync_to_caddy],
-      [:caddy, :config_manager, :sync_from_caddy],
       [:caddy, :config_manager, :drift_check],
       [:caddy, :config_manager, :rollback],
       [:caddy, :config_manager, :apply],

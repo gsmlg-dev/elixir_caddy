@@ -304,7 +304,7 @@ defmodule CaddyDashboardWeb.ServerLive do
 
             <%= if @server_info do %>
               <div class="overflow-x-auto">
-                <pre class="bg-base-300 p-4 rounded-lg text-xs overflow-auto max-h-96"><%= Jason.encode!(@server_info, pretty: true) %></pre>
+                <pre class="bg-base-300 p-4 rounded-lg text-xs overflow-auto max-h-96"><%= JSON.encode!(@server_info) %></pre>
               </div>
             <% else %>
               <div class="text-center py-8 text-base-content/50">

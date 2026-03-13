@@ -13,7 +13,7 @@ fields for common options (ports, TLS, logging, servers, PKI) and preserves the 
 ## Technical Context
 
 **Language/Version**: Elixir ~> 1.18, OTP 27+
-**Primary Dependencies**: Jason (JSON), Telemetry (observability), Mox (testing)
+**Primary Dependencies**: built-in JSON, Telemetry (observability), Mox (testing)
 **Storage**: N/A (in-memory configuration structs)
 **Testing**: ExUnit with Mox for mocking
 **Target Platform**: Any platform supporting Elixir/OTP (Linux, macOS, Windows)

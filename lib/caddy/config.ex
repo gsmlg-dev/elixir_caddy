@@ -78,7 +78,7 @@ defmodule Caddy.Config do
           env: list({binary(), binary()})
         }
 
-  @derive {Jason.Encoder, only: [:bin, :global, :additionals, :sites, :env]}
+  @derive JSON.Encoder
   defstruct bin: nil, global: "", additionals: [], sites: [], env: []
 
   # Path utilities
@@ -393,7 +393,7 @@ defmodule Caddy.Config do
            {_fmt_output, 0} <- System.cmd(caddy_bin, ["fmt", "--overwrite", tmp_config]),
            {config_json, 0} <-
              System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", tmp_config]),
-           {:ok, config} <- Jason.decode(config_json),
+           {:ok, config} <- JSON.decode(config_json),
            :ok <- validate_adapted_config(config) do
         duration = System.monotonic_time() - start_time
 
@@ -439,7 +439,7 @@ defmodule Caddy.Config do
       e in File.Error ->
         emit_adapt_error(start_time, "File operation error", e)
 
-      e in Jason.DecodeError ->
+      e in JSON.DecodeError ->
         emit_adapt_error(start_time, "JSON decode error", e)
     after
       if File.exists?(tmp_config), do: File.rm(tmp_config)
@@ -555,7 +555,7 @@ defmodule Caddy.Config do
   def parse_caddyfile(caddy_bin, caddy_file) do
     with {config_json, 0} <-
            System.cmd(caddy_bin, ["adapt", "--adapter", "caddyfile", "--config", caddy_file]),
-         {:ok, config} <- Jason.decode(config_json) do
+         {:ok, config} <- JSON.decode(config_json) do
       config
     else
       error ->
@@ -613,7 +613,7 @@ defmodule Caddy.Config do
   def load_saved_config(file_path) do
     with true <- File.exists?(file_path),
          {:ok, saved_config_string} <- File.read(file_path),
-         {:ok, saved_config} <- Jason.decode(saved_config_string) do
+         {:ok, saved_config} <- JSON.decode(saved_config_string) do
       saved_config
     else
       false ->

@@ -409,7 +409,7 @@ defmodule Caddy.ConfigProvider do
     start_time = System.monotonic_time()
 
     with :ok <- Config.ensure_dir_exists(backup_file),
-         {:ok, json} <- Jason.encode(config, pretty: true),
+         {:ok, json} <- {:ok, JSON.encode!(config)},
          :ok <- File.write(backup_file, json) do
       duration = System.monotonic_time() - start_time
 
@@ -470,7 +470,7 @@ defmodule Caddy.ConfigProvider do
     start_time = System.monotonic_time()
 
     with :ok <- Config.ensure_dir_exists(Config.saved_json_file()),
-         {:ok, json} <- Jason.encode(config, pretty: true),
+         {:ok, json} <- {:ok, JSON.encode!(config)},
          :ok <- File.write(Config.saved_json_file(), json) do
       duration = System.monotonic_time() - start_time
 

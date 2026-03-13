@@ -82,14 +82,14 @@ end
 
 ```elixir
 # WRONG (raises on socket error)
-"application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
+"application/json" -> {:ok, resp, JSON.decode!(read_body(socket, resp))}
 
 # CORRECT (propagates errors)
 "application/json" ->
   case read_body(socket, resp) do
     {:error, reason} -> {:error, reason}
     body ->
-      case Jason.decode(body) do
+      case JSON.decode(body) do
         {:ok, decoded} -> {:ok, resp, decoded}
         {:error, reason} -> {:error, {:decode_error, reason}}
       end

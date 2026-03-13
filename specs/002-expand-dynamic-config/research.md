@@ -144,7 +144,7 @@
 
 | Dependency | Status | Notes |
 |------------|--------|-------|
-| Jason | Already installed | Used for JSON encoding |
+| built-in JSON | Already installed | Used for JSON encoding |
 | Telemetry | Already installed | Used for observability |
 | Mox | Already installed (test) | For mocking in tests |
 | Caddy.Caddyfile protocol | Exists | All new structs implement this |

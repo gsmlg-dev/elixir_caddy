@@ -99,7 +99,7 @@
 
 ### Implementation for User Story 3
 
-- [x] T019 [US3] In `lib/caddy/admin/api.ex`, replace the `load(conf) when is_map(conf)` body (lines ~91–96): wrap with `case get_config() do; current when is_map(current) -> current |> Map.merge(conf) |> Jason.encode!() |> load(); nil -> %{status: 0, body: nil}; end`
+- [x] T019 [US3] In `lib/caddy/admin/api.ex`, replace the `load(conf) when is_map(conf)` body (lines ~91–96): wrap with `case get_config() do; current when is_map(current) -> current |> Map.merge(conf) |> JSON.encode!()() |> load(); nil -> %{status: 0, body: nil}; end`
 - [x] T020 [US3] Run `mix test test/caddy/admin/api_test.exs` and confirm T018 passes along with all pre-existing `load/1` tests
 
 **Checkpoint**: User Story 3 fully functional. `api.ex` load map path no longer crashes on nil runtime config.
@@ -121,7 +121,7 @@
 
 ### Implementation for User Story 4
 
-- [x] T023 [US4] In `lib/caddy/admin/request.ex`, rewrite `do_recv(socket, {:ok, :http_eoh}, resp)` (lines ~127–136): first `case read_body(socket, resp) do {:error, reason} -> {:error, reason}; body -> ...end`; inside the body branch, use `Jason.decode(body)` (not `decode!`) and handle both `{:ok, decoded}` and `{:error, reason}` returning `{:error, {:decode_error, reason}}` on failure
+- [x] T023 [US4] In `lib/caddy/admin/request.ex`, rewrite `do_recv(socket, {:ok, :http_eoh}, resp)` (lines ~127–136): first `case read_body(socket, resp) do {:error, reason} -> {:error, reason}; body -> ...end`; inside the body branch, use `JSON.decode(body)` (not `decode!`) and handle both `{:ok, decoded}` and `{:error, reason}` returning `{:error, {:decode_error, reason}}` on failure
 - [x] T024 [US4] Run `mix test test/caddy/admin/request_test.exs test/caddy/admin/api_test.exs` and confirm T021–T022 pass with no regressions
 
 **Checkpoint**: User Story 4 fully functional. HTTP transport errors no longer propagate as raised exceptions.

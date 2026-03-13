@@ -47,7 +47,7 @@ defmodule Caddy.MixProject do
 
   defp deps do
     [
-      {:jason, "~> 1.4"},
+      {:http_fetch, "~> 0.8"},
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:ex_doc, ">= 0.0.0", only: :docs, runtime: false},

@@ -42,7 +42,7 @@ defmodule CaddyDashboard.Settings do
   def load do
     case File.read(settings_file()) do
       {:ok, content} ->
-        case Jason.decode(content) do
+        case JSON.decode(content) do
           {:ok, settings} -> Map.merge(@default_settings, settings)
           {:error, _} -> @default_settings
         end
@@ -60,7 +60,7 @@ defmodule CaddyDashboard.Settings do
     file = settings_file()
 
     with :ok <- Caddy.Config.ensure_dir_exists(file),
-         {:ok, json} <- Jason.encode(settings, pretty: true),
+         {:ok, json} <- {:ok, JSON.encode!(settings)},
          :ok <- File.write(file, json) do
       :ok
     end

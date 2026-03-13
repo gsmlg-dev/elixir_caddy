@@ -331,7 +331,7 @@ defmodule CaddyDashboardWeb.ConfigLive do
       try do
         case Caddy.adapt(caddyfile) do
           {:ok, json} ->
-            formatted_json = Jason.encode!(json, pretty: true)
+            formatted_json = JSON.encode!(json)
             assign(socket, :adaptation_result, {:success, formatted_json})
 
           {:error, reason} ->

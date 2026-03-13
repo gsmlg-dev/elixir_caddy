@@ -175,7 +175,7 @@ defmodule Caddy.Admin.ApiTest do
       data = %{"admin" => %{"listen" => ":2019"}}
 
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/config/", body, "application/json" ->
-        assert Jason.decode!(body) == data
+        assert JSON.decode!(body) == data
         {:ok, %Request{status: 200}, data}
       end)
 
@@ -221,7 +221,7 @@ defmodule Caddy.Admin.ApiTest do
       data = %{"admin" => %{"listen" => ":2019"}}
 
       expect(Caddy.Admin.RequestMock, :put, 1, fn "/config/", body, "application/json" ->
-        assert Jason.decode!(body) == data
+        assert JSON.decode!(body) == data
         {:ok, %Request{status: 200}, data}
       end)
 
@@ -267,7 +267,7 @@ defmodule Caddy.Admin.ApiTest do
       data = %{"admin" => %{"listen" => ":2020"}}
 
       expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/", body, "application/json" ->
-        assert Jason.decode!(body) == data
+        assert JSON.decode!(body) == data
         {:ok, %Request{status: 200}, data}
       end)
 

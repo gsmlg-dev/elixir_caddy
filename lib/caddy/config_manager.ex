@@ -16,7 +16,7 @@ defmodule Caddy.ConfigManager do
 
   ## Sync Strategies
 
-  By default, sync is manual. Users explicitly call `sync_to_caddy/0` or `sync_from_caddy/0`.
+  By default, sync is manual. Users explicitly call `sync_to_caddy/0`.
 
   ## Examples
 
@@ -29,7 +29,6 @@ defmodule Caddy.ConfigManager do
 
       # Manual sync
       :ok = Caddy.ConfigManager.sync_to_caddy()
-      :ok = Caddy.ConfigManager.sync_from_caddy()
 
       # Check for drift
       {:ok, :in_sync} = Caddy.ConfigManager.check_sync_status()
@@ -171,9 +170,13 @@ defmodule Caddy.ConfigManager do
   def get_memory_config(:json) do
     caddyfile = ConfigProvider.get_caddyfile()
 
-    case ConfigProvider.adapt(caddyfile) do
-      {:ok, json_config} -> {:ok, json_config}
-      {:error, reason} -> {:error, {:adaptation_failed, reason}}
+    if String.trim(caddyfile) == "" do
+      {:ok, %{}}
+    else
+      case ConfigProvider.adapt(caddyfile) do
+        {:ok, json_config} -> {:ok, json_config}
+        {:error, reason} -> {:error, {:adaptation_failed, reason}}
+      end
     end
   end
 
@@ -223,29 +226,7 @@ defmodule Caddy.ConfigManager do
     GenServer.call(__MODULE__, {:sync_to_caddy, opts})
   end
 
-  @doc """
-  Pull running Caddy config to memory.
-
-  **DEPRECATED**: This function stores JSON in the Caddyfile field, which breaks
-  the text-first design principle. It will be removed in v3.0.0.
-
-  The Caddy Admin API returns JSON configuration, but there is no reverse
-  conversion from JSON back to Caddyfile format. Use `get_runtime_config/0`
-  to inspect the running configuration instead.
-  """
-  @deprecated "Use get_runtime_config/0 instead. Will be removed in v3.0.0"
-  @impl Caddy.ConfigManager.Behaviour
-  @spec sync_from_caddy() :: :ok | {:error, term()}
-  def sync_from_caddy do
-    Telemetry.log_warning(
-      "sync_from_caddy/0 is deprecated. Use get_runtime_config/0 instead.",
-      module: __MODULE__
-    )
-
-    GenServer.call(__MODULE__, :sync_from_caddy)
-  end
-
-  @doc """
+  @doc"""
   Check if in-memory and runtime configs are in sync.
 
   Returns `:in_sync` if configs match, or `{:drift_detected, diff}` with
@@ -399,7 +380,7 @@ defmodule Caddy.ConfigManager do
            {:ok, caddyfile} <- {:ok, ConfigProvider.get_caddyfile()},
            :ok <- if(force?, do: :ok, else: maybe_validate(caddyfile, true)),
            {:ok, json_config} <- ConfigProvider.adapt(caddyfile),
-           %{status: status} when status in 200..299 <- Api.load(Jason.encode!(json_config)) do
+           %{status: status} when status in 200..299 <- Api.load(JSON.encode!(json_config)) do
         :ok
       else
         %{status: status, body: body} ->
@@ -458,48 +439,6 @@ defmodule Caddy.ConfigManager do
   end
 
   @impl true
-  def handle_call(:sync_from_caddy, _from, state) do
-    start_time = System.monotonic_time()
-
-    result =
-      case Api.get_config() do
-        nil ->
-          {:error, :caddy_not_available}
-
-        config when is_map(config) ->
-          # Store as JSON string in caddyfile field
-          # Note: This is a compromise - we store JSON, not Caddyfile
-          json_str = Jason.encode!(config, pretty: true)
-          ConfigProvider.set_caddyfile(json_str)
-          {:ok, config}
-      end
-
-    duration = System.monotonic_time() - start_time
-
-    case result do
-      {:ok, _} ->
-        Telemetry.emit_config_manager_event(:sync_from_caddy, %{duration: duration}, %{
-          success: true
-        })
-
-        new_state =
-          state
-          |> Map.put(:last_sync_time, DateTime.utc_now())
-          |> Map.put(:last_sync_status, :success)
-
-        {:reply, :ok, new_state}
-
-      {:error, reason} ->
-        Telemetry.emit_config_manager_event(:sync_from_caddy, %{duration: duration}, %{
-          success: false,
-          error: reason
-        })
-
-        {:reply, {:error, reason}, state}
-    end
-  end
-
-  @impl true
   def handle_call(:check_sync_status, _from, state) do
     start_time = System.monotonic_time()
 
@@ -537,7 +476,7 @@ defmodule Caddy.ConfigManager do
     result =
       case path do
         "/" ->
-          case Api.load(Jason.encode!(config)) do
+          case Api.load(JSON.encode!(config)) do
             %{status: status} when status in 200..299 -> :ok
             %{status: status, body: body} -> {:error, {:http_error, status, body}}
           end
@@ -569,7 +508,7 @@ defmodule Caddy.ConfigManager do
           {:error, :no_rollback_available}
 
         config ->
-          case Api.load(Jason.encode!(config)) do
+          case Api.load(JSON.encode!(config)) do
             %{status: status} when status in 200..299 -> :ok
             %{status: status, body: body} -> {:error, {:http_error, status, body}}
           end

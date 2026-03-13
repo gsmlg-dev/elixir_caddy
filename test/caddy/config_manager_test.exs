@@ -151,34 +151,6 @@ defmodule Caddy.ConfigManagerTest do
   end
 
   # ============================================================================
-  # sync_from_caddy
-  # ============================================================================
-
-  describe "sync_from_caddy/0" do
-    test "pulls config from Caddy to memory" do
-      config = %{"admin" => %{"listen" => ":2019"}, "apps" => %{}}
-
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 200}, config}
-      end)
-
-      assert :ok = ConfigManager.sync_from_caddy()
-
-      # Verify the config was stored (as JSON string)
-      stored = ConfigProvider.get_caddyfile()
-      assert stored =~ "admin"
-    end
-
-    test "returns error when Caddy is not available" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:error, :econnrefused}
-      end)
-
-      assert {:error, :caddy_not_available} = ConfigManager.sync_from_caddy()
-    end
-  end
-
-  # ============================================================================
   # apply_runtime_config - these bypass in-memory and go direct to Caddy
   # ============================================================================
 

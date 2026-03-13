@@ -108,7 +108,7 @@ defmodule Caddy.Server.External do
     # Api.get_config/0 returns a bare map (not a tuple) on success, nil on error
     case Api.get_config() do
       config when is_map(config) ->
-        Jason.encode!(config, pretty: true)
+        JSON.encode!(config)
 
       _ ->
         ""
@@ -160,7 +160,14 @@ defmodule Caddy.Server.External do
   @impl true
   def handle_continue(:initial_setup, state) do
     # Check initial status
-    {new_status, state} = do_health_check(state)
+    {new_status, state} =
+      try do
+        do_health_check(state)
+      rescue
+        _ -> {:unknown, state}
+      catch
+        :exit, _ -> {:unknown, state}
+      end
 
     # If running and config not pushed, push it
     state =
@@ -229,7 +236,14 @@ defmodule Caddy.Server.External do
 
   @impl true
   def handle_info(:health_check, state) do
-    {new_status, state} = do_health_check(state)
+    {new_status, state} =
+      try do
+        do_health_check(state)
+      rescue
+        _ -> {:unknown, state}
+      catch
+        :exit, _ -> {:unknown, state}
+      end
 
     # If just became running and config not pushed, push it
     state =

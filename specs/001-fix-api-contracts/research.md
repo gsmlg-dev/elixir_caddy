@@ -10,7 +10,7 @@
 ```elixir
 case Api.get_config() do
   {:ok, _resp, config} when is_map(config) ->
-    Jason.encode!(config, pretty: true)
+    JSON.encode!(config)
   _ ->
     ""
 end
@@ -53,7 +53,7 @@ end
 def load(conf) when is_map(conf) do
   get_config()
   |> Map.merge(conf)  # raises BadMapError when get_config() returns nil
-  |> Jason.encode!()
+  |> JSON.encode!()()
   |> load()
 end
 ```
@@ -66,7 +66,7 @@ end
 
 ---
 
-### Bug 4: `Request.do_recv/3` — `Jason.decode!` on Possible `{:error, reason}`
+### Bug 4: `Request.do_recv/3` — `JSON.decode!` on Possible `{:error, reason}`
 
 **Location**: `lib/caddy/admin/request.ex:133-135`
 
@@ -74,21 +74,21 @@ end
 ```elixir
 defp do_recv(socket, {:ok, :http_eoh}, resp) do
   case :proplists.get_value(:"Content-Type", resp.headers) do
-    "application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
+    "application/json" -> {:ok, resp, JSON.decode!(read_body(socket, resp))}
     _ -> {:ok, resp, read_body(socket, resp)}
   end
 end
 ```
 
-**Problem A**: `read_body/2` can return `{:error, reason}` (lines 162-164). Passing that to `Jason.decode!` raises `Jason.DecodeError`.
+**Problem A**: `read_body/2` can return `{:error, reason}` (lines 162-164). Passing that to `JSON.decode!` raises `JSON.DecodeError`.
 
 **Problem B**: In the non-JSON branch, `{:ok, resp, {:error, reason}}` is returned — a structured response containing an error tuple as the body, which callers won't detect.
 
 **Additional issue found** (not in original review): `read_chunked_body/3` at line 182 has `{:ok, data} = :gen_tcp.recv(...)` — an unsafe pattern match that raises on socket error in the chunked body path.
 
 **Fix decision**:
-- Check `read_body/2` result before calling `Jason.decode`
-- Replace `Jason.decode!` with `Jason.decode` and handle `{:error, reason}`
+- Check `read_body/2` result before calling `JSON.decode`
+- Replace `JSON.decode!` with `JSON.decode` and handle `{:error, reason}`
 - Return `{:error, reason}` if body read fails
 
 ---
@@ -150,7 +150,7 @@ Also: `lib/caddy/admin/api.ex:30` has `require Logger` with no corresponding Log
 |---|----------|-----------|
 | D1 | Fix `External` to consume actual `Api` return types | Minimal change; no `Api` public signature changes |
 | D2 | Guard `Api.load/1` map merge against nil | Returns `%{status: 0, body: nil}` consistent with existing error pattern |
-| D3 | Use `Jason.decode/1` (safe) instead of `Jason.decode!/1` | Allows error normalization instead of raising |
+| D3 | Use `JSON.decode/1` (safe) instead of `JSON.decode!/1` | Allows error normalization instead of raising |
 | D4 | Add empty-string guard in `execute_shell_command/1` | Makes error explicit and testable |
 | D5 | Replace `Logger.debug` with `Caddy.Telemetry.log_debug` in `request.ex` | Constitution Principle II compliance |
 | D6 | Remove unused `require Logger` from `api.ex` | Credo strict compliance |

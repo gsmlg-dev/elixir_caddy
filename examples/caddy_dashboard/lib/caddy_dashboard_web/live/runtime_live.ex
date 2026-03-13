@@ -164,7 +164,7 @@ defmodule CaddyDashboardWeb.RuntimeLive do
   def handle_event("apply_json", %{"json" => json_text}, socket) do
     result =
       try do
-        decoded = Jason.decode!(json_text)
+        decoded = JSON.decode!(json_text)
         path = socket.assigns.current_path
 
         if path == "" do
@@ -221,7 +221,7 @@ defmodule CaddyDashboardWeb.RuntimeLive do
   end
 
   defp format_json(data) when is_map(data) or is_list(data) do
-    Jason.encode!(data, pretty: true)
+    JSON.encode!(data)
   end
 
   defp format_json(data), do: inspect(data, pretty: true)

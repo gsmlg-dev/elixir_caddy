@@ -10,7 +10,7 @@ Extend `Caddy.Config` to support dynamic configuration elements including enviro
 ## Technical Context
 
 **Language/Version**: Elixir ~> 1.18, OTP 27+
-**Primary Dependencies**: Jason (JSON), Telemetry (observability), Mox (testing)
+**Primary Dependencies**: built-in JSON, Telemetry (observability), Mox (testing)
 **Storage**: N/A (in-memory configuration structs)
 **Testing**: ExUnit with Mox for mocking, mix test
 **Target Platform**: Elixir library (embeddable in any OTP application)
@@ -29,7 +29,7 @@ Extend `Caddy.Config` to support dynamic configuration elements including enviro
 | II. Observability by Default | PASS | FR-013 requires telemetry events for all new config rendering; will use `Caddy.Telemetry.log_*` functions |
 | III. Test-Driven Quality | PASS | Tests will be written for all new modules; Mox not needed (pure struct/protocol implementations) |
 | IV. Configuration Transparency | PASS | All new options documented with `@moduledoc` and `@doc`; follows existing patterns |
-| V. Minimal Dependencies | PASS | No new dependencies required; uses existing Jason/Telemetry |
+| V. Minimal Dependencies | PASS | No new dependencies required; uses existing built-in JSON/Telemetry |
 | VI. Caddyfile Structure | PASS | Named routes go in "additionals" section; matchers go in sites; env vars render inline |
 
 **Gate Status**: PASS - All principles satisfied without violations.
