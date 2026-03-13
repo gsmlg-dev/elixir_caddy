@@ -1,0 +1,12 @@
+{
+  "elixir": {
+    "command": "elixir-ls",
+    "args": [],
+    "extensionToLanguage": {
+      ".ex": "elixir",
+      ".exs": "elixir",
+      ".heex": "html-eex",
+      ".leex": "html-eex"
+    }
+  }
+}

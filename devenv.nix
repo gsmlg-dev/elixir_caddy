@@ -12,6 +12,7 @@ in
     pkgs-stable.figlet
     pkgs-stable.lolcat
     pkgs-stable.inotify-tools
+    pkgs-stable.beam27Packages.elixir-ls
   ];
 
   languages.elixir.enable = true;
