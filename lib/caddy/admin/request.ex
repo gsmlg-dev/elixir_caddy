@@ -2,20 +2,23 @@ defmodule Caddy.Admin.Request do
   @moduledoc """
   Low-level HTTP client for Caddy Admin API.
 
-  This module provides HTTP communication with the Caddy admin API
-  using the `http_fetch` library. It implements the RequestBehaviour
-  and handles GET, POST, PUT, PATCH, and DELETE operations.
+  This module provides direct HTTP communication with the Caddy admin API
+  using either Unix domain sockets or TCP connections. It implements the
+  RequestBehaviour and handles GET, POST, PUT, PATCH, and DELETE operations.
 
   ## Implementation Details
 
-  - Uses `HTTP.fetch/2` for all HTTP operations
+  - Uses `Caddy.Admin.Transport` for connection management
   - Supports both Unix sockets (embedded mode) and TCP (external mode)
+  - Parses HTTP responses with `:http_bin` packet mode
   - Automatically decodes JSON responses
   - Returns structured response with status, headers, and body
   """
   @behaviour Caddy.Admin.RequestBehaviour
 
   alias Caddy.Admin.Request
+  alias Caddy.Admin.Transport
+  require Logger
 
   @type t :: %__MODULE__{
           status: integer(),
@@ -30,7 +33,12 @@ defmodule Caddy.Admin.Request do
   """
   @impl true
   def get(path) do
-    do_fetch("GET", path, nil, nil)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("get", path, nil, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      do_recv(socket)
+    end
   end
 
   @doc """
@@ -38,7 +46,13 @@ defmodule Caddy.Admin.Request do
   """
   @impl true
   def post(path, data, content_type \\ "application/json") do
-    do_fetch("POST", path, data, content_type)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("post", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
   @doc """
@@ -46,7 +60,13 @@ defmodule Caddy.Admin.Request do
   """
   @impl true
   def patch(path, data, content_type \\ "application/json") do
-    do_fetch("PATCH", path, data, content_type)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("patch", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
   @doc """
@@ -56,7 +76,13 @@ defmodule Caddy.Admin.Request do
   @spec put(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def put(path, data, content_type \\ "application/json") do
-    do_fetch("PUT", path, data, content_type)
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("put", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
+    end
   end
 
   @doc """
@@ -66,68 +92,96 @@ defmodule Caddy.Admin.Request do
   @spec delete(binary(), binary(), binary()) ::
           {:ok, atom | %{:headers => list, optional(any) => any}, String.t() | map()}
   def delete(path, data \\ "", content_type \\ "application/json") do
-    do_fetch("DELETE", path, data, content_type)
-  end
-
-  defp do_fetch(method, path, body, content_type) do
-    {url, fetch_opts} = build_fetch_args(Caddy.Config.admin_url(), path)
-
-    fetch_opts = Keyword.put(fetch_opts, :method, method)
-
-    fetch_opts =
-      if body && body != "",
-        do: Keyword.put(fetch_opts, :body, body),
-        else: fetch_opts
-
-    fetch_opts =
-      if content_type,
-        do: Keyword.put(fetch_opts, :content_type, content_type),
-        else: fetch_opts
-
-    try do
-      HTTP.fetch(url, fetch_opts)
-      |> HTTP.Promise.await()
-      |> parse_response()
-    rescue
-      e -> {:error, {:request_exception, e}}
-    catch
-      :exit, reason -> {:error, {:request_exit, reason}}
+    with {:ok, conn_info} <- Transport.get_connection(),
+         {:ok, socket} <- Transport.connect(conn_info) do
+      req_raw_header = gen_raw_header("delete", path, content_type, conn_info)
+      :gen_tcp.send(socket, req_raw_header)
+      :gen_tcp.send(socket, data)
+      do_recv(socket)
     end
   end
 
-  defp build_fetch_args("unix://" <> socket_path, path) do
-    {"http://localhost#{path}", [unix_socket: socket_path]}
+  defp gen_raw_header(method, path, content_type, conn_info) do
+    host = Transport.host_header(conn_info)
+    content_type_line = if content_type, do: "Content-Type: #{content_type}\r\n", else: ""
+    "#{String.upcase(method)} #{path} HTTP/1.1\r\nHost: #{host}\r\n#{content_type_line}\r\n"
   end
 
-  defp build_fetch_args(admin_url, path) do
-    {admin_url <> path, []}
+  defp do_recv(socket), do: do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{})
+
+  defp do_recv(socket, {:ok, {:http_response, {1, 1}, code, _}}, resp) do
+    do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{resp | status: code})
   end
 
-  defp parse_response(%HTTP.Response{} = resp) do
-    request = %Request{
-      status: resp.status,
-      headers: HTTP.Headers.to_list(resp.headers),
-      body: resp.body
-    }
+  defp do_recv(socket, {:ok, {:http_header, _, h, _, v}}, resp) do
+    do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{
+      resp
+      | headers: [{h, v} | resp.headers]
+    })
+  end
 
-    {media_type, _params} = HTTP.Response.content_type(resp)
-    body = resp.body || HTTP.Response.read_all(resp)
-
-    if String.contains?(media_type, "application/json") do
-      case JSON.decode(body) do
-        {:ok, decoded} -> {:ok, request, decoded}
-        {:error, reason} -> {:error, {:decode_error, reason}}
-      end
-    else
-      {:ok, request, body}
+  defp do_recv(socket, {:ok, :http_eoh}, resp) do
+    # Now we only have body left.
+    # # Depending on headers here you may want to do different things.
+    # # The response might be chunked, or upgraded in case you have attached to the container
+    # # Now I can receive the response. Because of `:active, false} I need to explicitly
+    # # ask for data, otherwise it gets send to the process as messages.
+    case :proplists.get_value(:"Content-Type", resp.headers) do
+      "application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
+      _ -> {:ok, resp, read_body(socket, resp)}
     end
   end
 
-  defp parse_response({:ok, %HTTP.Response{} = resp}) do
-    parse_response(resp)
+  defp read_body(socket, resp) do
+    case :proplists.get_value(:"Content-Length", resp.headers) do
+      :undefined ->
+        # No content length. Checked if chunked
+        case :proplists.get_value(:"Transfer-Encoding", resp.headers) do
+          "chunked" ->
+            {:ok, resp_body} = read_chunked_body(socket, resp)
+            resp_body
+
+          # No body
+          _ ->
+            ""
+        end
+
+      content_length ->
+        bytes_to_read = String.to_integer(content_length)
+        # No longer line based http, just read data
+        :inet.setopts(socket, [{:packet, :raw}])
+
+        case :gen_tcp.recv(socket, bytes_to_read, 5000) do
+          {:ok, data} ->
+            data
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
   end
 
-  defp parse_response({:error, reason}) do
-    {:error, reason}
+  defp read_chunked_body(socket, resp), do: read_chunked_body(socket, resp, [])
+
+  defp read_chunked_body(socket, resp, acc) do
+    Logger.debug("read_chunked_body: #{inspect(socket)} #{inspect(resp)} #{inspect(acc)}")
+    :inet.setopts(socket, [{:packet, :line}])
+
+    case :gen_tcp.recv(socket, 0, 5000) do
+      {:ok, length} ->
+        length = String.trim_trailing(length, "\r\n") |> String.to_integer(16)
+
+        if length == 0 do
+          {:ok, :erlang.iolist_to_binary(Enum.reverse(acc))}
+        else
+          :inet.setopts(socket, [{:packet, :raw}])
+          {:ok, data} = :gen_tcp.recv(socket, length, 5000)
+          :gen_tcp.recv(socket, 2, 5000)
+          read_chunked_body(socket, resp, [data | acc])
+        end
+
+      other ->
+        {:error, other}
+    end
   end
 end
