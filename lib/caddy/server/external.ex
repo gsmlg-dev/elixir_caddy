@@ -66,7 +66,7 @@ defmodule Caddy.Server.External do
   Available commands: `:start`, `:stop`, `:restart`, `:status`
   """
   @spec execute_command(atom()) :: {:ok, binary()} | {:error, term()}
-  def execute_command(command) when command in [:start, :stop, :restart, :status] do
+  def execute_command(command) when command in [:start, :stop, :restart, :status, :health_check] do
     GenServer.call(__MODULE__, {:execute_command, command})
   end
 
