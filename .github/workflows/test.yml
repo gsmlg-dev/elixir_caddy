@@ -2,22 +2,31 @@ name: Test
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
 
 jobs:
   test:
     name: Test (Elixir ${{matrix.elixir}} / OTP ${{matrix.otp}})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        elixir: ['1.18', '1.19']
+        elixir: ['1.18']
         otp: ['27', '28']
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1

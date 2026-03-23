@@ -1,15 +1,19 @@
-name: release
+name: Release
+
 on:
   workflow_dispatch:
     inputs:
-      release-version:
+      version:
         required: true
-        description: 'The version of the release (e.g. 2.3.2)'
-        default: '2.0.0'
-      git-ref:
+        description: 'Release version (e.g. 1.2.3)'
+      git_ref:
         required: true
-        description: 'The git revision of repo, branch, tag or commit'
+        description: 'Git ref to release from'
         default: 'main'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -20,25 +24,21 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: docs
-    steps:
-      - name: 🛑 Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.12.1
-        with:
-          access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: ⬇️ Checkout repo
+    steps:
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.git-ref }}
+          ref: ${{ inputs.git_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          otp-version: 27
-          elixir-version: 1.18
+          otp-version: '28'
+          elixir-version: '1.18'
 
-      - name: Install Deps
+      - name: Install dependencies
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
@@ -46,8 +46,8 @@ jobs:
 
       - name: Update version in mix.exs and README.md
         run: |
-          sed -i 's%@version "[0-9\.]\+"%@version "${{ github.event.inputs.release-version }}"%' mix.exs
-          sed -i 's%{:caddy, "~> [0-9\.]\+"}%{:caddy, "~> ${{ github.event.inputs.release-version }}"}%' README.md
+          sed -i 's%@version "[0-9\.]\+"%@version "${{ inputs.version }}"%' mix.exs
+          sed -i 's%{:caddy, "~> [0-9\.]\+"}%{:caddy, "~> ${{ inputs.version }}"}%' README.md
 
       - name: Publish to hex.pm
         env:
@@ -60,13 +60,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add mix.exs README.md
-          git commit -m "chore(release): bump version to ${{ github.event.inputs.release-version }}"
-          git push origin HEAD:${{ github.event.inputs.git-ref }}
+          git commit -m "chore(release): bump version to ${{ inputs.version }}"
+          git push origin HEAD:${{ inputs.git_ref }}
 
-      - name: Create tag
+      - name: Create and push tag
         run: |
-          git tag "v${{ github.event.inputs.release-version }}"
-          git push origin "v${{ github.event.inputs.release-version }}"
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
 
       - name: Create GitHub Release with generated notes
         uses: actions/github-script@v7
@@ -75,8 +75,8 @@ jobs:
             await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: `v${{ github.event.inputs.release-version }}`,
-              name: `v${{ github.event.inputs.release-version }}`,
+              tag_name: `v${{ inputs.version }}`,
+              name: `v${{ inputs.version }}`,
               generate_release_notes: true,
               draft: false,
               prerelease: false
