@@ -1,0 +1,120 @@
+name: E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: 'Release version to test (e.g. 2.3.2)'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E (v${{ inputs.version }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '28'
+
+      - name: Download Caddy binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CADDY_VERSION=$(gh release view --repo caddyserver/caddy --json tagName -q '.tagName' | sed 's/^v//')
+          if [ -z "$CADDY_VERSION" ] || [ "$CADDY_VERSION" = "null" ]; then
+            CADDY_VERSION="2.9.1"
+          fi
+          echo "Downloading Caddy version: $CADDY_VERSION"
+          curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" -o caddy.tar.gz
+          tar -xzf caddy.tar.gz
+          sudo mv caddy /usr/bin/caddy
+          sudo chmod +x /usr/bin/caddy
+          caddy version
+
+      - name: Create throwaway test app
+        run: |
+          mix new e2e_test_app --app e2e_test_app
+          cd e2e_test_app
+
+          # Pin to the released version under test
+          sed -i '/defp deps/,/end/{/\[\]/d}' mix.exs
+          sed -i 's/defp deps do\n.*\[\]/defp deps do/' mix.exs
+          cat >> mix.exs << 'DEPS_EOF'
+
+          # Append dep — mix.exs already has deps/0; we patch it in place
+          DEPS_EOF
+
+          # Rewrite deps/0 to include caddy
+          python3 - <<'PY'
+          import re
+          with open("mix.exs") as f:
+              content = f.read()
+          content = re.sub(
+              r'(defp deps do\s*\[)(.*?)(\])',
+              r'\1\n      {:caddy, "~> ${{ inputs.version }}"}\3',
+              content,
+              flags=re.DOTALL
+          )
+          with open("mix.exs", "w") as f:
+              f.write(content)
+          PY
+
+      - name: Fetch released package from hex.pm
+        working-directory: e2e_test_app
+        run: mix deps.get
+
+      - name: Compile
+        working-directory: e2e_test_app
+        run: mix compile
+
+      - name: Write e2e test
+        run: |
+          mkdir -p e2e_test_app/test
+          cat > e2e_test_app/test/e2e_test.exs << 'EOF'
+          defmodule E2ETest do
+            use ExUnit.Case
+
+            @caddy_bin "/usr/bin/caddy"
+            @timeout 10_000
+
+            test "Caddy binary exists and is executable" do
+              assert File.exists?(@caddy_bin)
+              {output, 0} = System.cmd(@caddy_bin, ["version"])
+              assert output =~ ~r/v\d+\.\d+/
+            end
+
+            test "Caddy.Config can set binary path" do
+              {:ok, _pid} = Caddy.Config.start_link([])
+              assert :ok = Caddy.Config.set_bin(@caddy_bin)
+              assert %Caddy.Config{bin: @caddy_bin} = Caddy.Config.get()
+            end
+
+            test "Caddy supervisor starts and stops cleanly" do
+              {:ok, sup} = Caddy.start(@caddy_bin)
+              assert Process.alive?(sup)
+
+              # Give Caddy time to start
+              Process.sleep(2_000)
+
+              # Stop the supervisor tree
+              :ok = Supervisor.stop(sup)
+              refute Process.alive?(sup)
+            end
+          end
+          EOF
+
+      - name: Run e2e tests
+        working-directory: e2e_test_app
+        env:
+          MIX_ENV: test
+        run: mix test test/e2e_test.exs --timeout ${{ env.E2E_TIMEOUT || '30000' }}
