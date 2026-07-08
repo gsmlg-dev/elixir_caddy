@@ -81,6 +81,10 @@ defmodule Caddy.Config do
   @derive JSON.Encoder
   defstruct bin: nil, global: "", additionals: [], sites: [], env: []
 
+  @type command :: binary() | {binary(), [binary()]}
+
+  @default_minimum_caddy_version "2.7.0"
+
   # Path utilities
   defdelegate user_home, to: System
 
@@ -190,6 +194,7 @@ defmodule Caddy.Config do
 
   Supports both TCP and Unix socket connections:
   - `"http://localhost:2019"` - TCP connection
+  - `"https://admin.example.com:2019"` - TLS connection, optionally using `:admin_tls`
   - `"unix:///path/to/caddy.sock"` - Unix domain socket
 
   Falls back to the configured socket_file in embedded mode.
@@ -207,9 +212,30 @@ defmodule Caddy.Config do
   end
 
   @doc """
+  Get TLS options for HTTPS Admin API connections.
+
+  Supported keys are `:certfile`, `:keyfile`, and `:cacertfile`. When a CA
+  certificate is configured, peer verification is enabled.
+
+  ## Example
+
+      config :caddy,
+        admin_url: "https://caddy-admin.example.com:2019",
+        admin_tls: [
+          certfile: "/etc/caddy/client.pem",
+          keyfile: "/etc/caddy/client-key.pem",
+          cacertfile: "/etc/caddy/ca.pem"
+        ]
+  """
+  @spec admin_tls() :: keyword()
+  def admin_tls, do: Application.get_env(:caddy, :admin_tls, [])
+
+  @doc """
   Get system commands for external mode operations.
 
-  Commands are executed via System.cmd when managing an externally-controlled Caddy.
+  Commands can be shell strings or `{executable, args}` tuples. Strings are
+  executed through `sh -c` so quoted arguments and shell redirects are preserved.
+  Tuples avoid shell parsing and are preferred when command arguments are static.
 
   ## Example
 
@@ -217,10 +243,10 @@ defmodule Caddy.Config do
         start: "systemctl start caddy",
         stop: "systemctl stop caddy",
         restart: "systemctl restart caddy",
-        status: "systemctl is-active caddy"
+        status: {"systemctl", ["is-active", "caddy"]}
       ]
   """
-  @spec commands() :: keyword(binary())
+  @spec commands() :: keyword(command())
   def commands, do: Application.get_env(:caddy, :commands, [])
 
   @doc """
@@ -228,7 +254,7 @@ defmodule Caddy.Config do
 
   Returns nil if the command is not configured.
   """
-  @spec command(atom()) :: binary() | nil
+  @spec command(atom()) :: command() | nil
   def command(name) when is_atom(name), do: Keyword.get(commands(), name)
 
   @doc """
@@ -242,6 +268,44 @@ defmodule Caddy.Config do
   """
   @spec health_interval() :: pos_integer()
   def health_interval, do: Application.get_env(:caddy, :health_interval, 30_000)
+
+  @doc """
+  Get the periodic drift check interval for external mode.
+
+  Returns `nil` when drift checks are disabled. Configure a positive millisecond
+  interval to periodically compare in-memory and runtime config.
+  """
+  @spec drift_interval() :: pos_integer() | nil
+  def drift_interval do
+    case Application.get_env(:caddy, :drift_interval) do
+      interval when is_integer(interval) and interval > 0 -> interval
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Get the external-mode drift policy.
+
+  - `:report` logs/telemeters drift but leaves runtime config untouched.
+  - `:resync` calls `Caddy.ConfigManager.sync_to_caddy/0` when drift is detected.
+  """
+  @spec on_drift() :: :report | :resync
+  def on_drift do
+    case Application.get_env(:caddy, :on_drift, :report) do
+      policy when policy in [:report, :resync] -> policy
+      _ -> :report
+    end
+  end
+
+  @doc """
+  Get the minimum supported Caddy version used for binary validation.
+
+  Set to `nil` to skip minimum-version enforcement.
+  """
+  @spec minimum_caddy_version() :: binary() | nil
+  def minimum_caddy_version do
+    Application.get_env(:caddy, :minimum_caddy_version, @default_minimum_caddy_version)
+  end
 
   @doc false
   def paths, do: [priv_path(), share_path(), etc_path(), run_path(), tmp_path()]
@@ -483,8 +547,11 @@ defmodule Caddy.Config do
 
       true ->
         case check_bin(caddy_bin) do
-          :ok -> :ok
-          {:error, _} -> {:error, "Invalid Caddy binary or version incompatibility"}
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            {:error, "Invalid Caddy binary or version incompatibility: #{reason}"}
         end
     end
   rescue
@@ -582,13 +649,88 @@ defmodule Caddy.Config do
   @doc false
   def check_bin(bin) do
     if can_execute?(bin) do
-      case System.cmd(bin, ["version"]) do
-        {"v2" <> _, 0} -> :ok
-        _ -> {:error, "Caddy binary version check failed"}
+      case version(bin) do
+        {:ok, version} -> check_minimum_version(version)
+        {:error, reason} -> {:error, reason}
       end
     else
       {:error, "Caddy binary not found or not executable"}
     end
+  end
+
+  @doc """
+  Return the Caddy binary version.
+  """
+  @spec version(binary() | nil) :: {:ok, binary()} | {:error, term()}
+  def version(caddy_bin \\ nil) do
+    caddy_bin = caddy_bin || System.find_executable("caddy")
+
+    cond do
+      is_nil(caddy_bin) ->
+        {:error, :caddy_binary_not_found}
+
+      not can_execute?(caddy_bin) ->
+        {:error, :caddy_binary_not_executable}
+
+      true ->
+        case System.cmd(caddy_bin, ["version"], stderr_to_stdout: true) do
+          {output, 0} ->
+            {:ok, parse_version_output(output)}
+
+          {output, exit_code} ->
+            {:error, {:version_command_failed, exit_code, output}}
+        end
+    end
+  rescue
+    error in ErlangError -> {:error, {:version_command_error, error.original}}
+  end
+
+  @doc """
+  Return Caddy binary version and module list when available.
+  """
+  @spec version_info(binary() | nil) :: {:ok, map()} | {:error, term()}
+  def version_info(caddy_bin \\ nil) do
+    caddy_bin = caddy_bin || System.find_executable("caddy")
+
+    with {:ok, version} <- version(caddy_bin) do
+      modules =
+        case modules(caddy_bin) do
+          {:ok, module_names} -> module_names
+          {:error, _reason} -> []
+        end
+
+      {:ok, %{version: version, modules: modules}}
+    end
+  end
+
+  @doc """
+  Return installed Caddy modules.
+  """
+  @spec modules(binary() | nil) :: {:ok, [binary()]} | {:error, term()}
+  def modules(caddy_bin \\ nil) do
+    caddy_bin = caddy_bin || System.find_executable("caddy")
+
+    cond do
+      is_nil(caddy_bin) ->
+        {:error, :caddy_binary_not_found}
+
+      not can_execute?(caddy_bin) ->
+        {:error, :caddy_binary_not_executable}
+
+      true ->
+        case System.cmd(caddy_bin, ["list-modules", "--versions"], stderr_to_stdout: true) do
+          {output, 0} ->
+            {:ok,
+             output
+             |> String.split("\n", trim: true)
+             |> Enum.reject(&module_section_header?/1)}
+
+          {output, exit_code} ->
+            {:error, {:modules_command_failed, exit_code, output}}
+        end
+    end
+  rescue
+    error in ErlangError -> {:error, {:modules_command_error, error.original}}
   end
 
   @doc false
@@ -604,6 +746,37 @@ defmodule Caddy.Config do
   end
 
   def can_execute?(_), do: false
+
+  defp parse_version_output(output) do
+    output
+    |> String.trim()
+    |> String.split()
+    |> List.first()
+    |> String.trim_leading("v")
+  end
+
+  defp check_minimum_version(version) do
+    case minimum_caddy_version() do
+      nil ->
+        :ok
+
+      minimum ->
+        with {:ok, parsed_version} <- Version.parse(version),
+             {:ok, parsed_minimum} <- Version.parse(minimum) do
+          case Version.compare(parsed_version, parsed_minimum) do
+            :lt -> {:error, "Caddy #{version} is older than required #{minimum}"}
+            _ -> :ok
+          end
+        else
+          _ -> {:error, "Caddy binary version check failed"}
+        end
+    end
+  end
+
+  defp module_section_header?(line) do
+    String.starts_with?(line, "standard modules:") or
+      String.starts_with?(line, "non-standard modules:")
+  end
 
   @doc false
   def load_saved_config(file_path) do

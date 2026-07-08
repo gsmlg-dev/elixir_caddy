@@ -2,11 +2,13 @@ defmodule Caddy do
   @moduledoc """
   # Caddy
 
-  Start Caddy HTTP Server in supervisor tree.
+  Manage a Caddy reverse proxy from an Elixir supervision tree.
 
-  If caddy bin is set, caddy server will automatically start when application starts.
+  The default mode is `:external`: Caddy is managed outside the BEAM and this
+  library talks to its Admin API. Use `:embedded` only when you explicitly want
+  this application to spawn and monitor a local Caddy binary.
 
-  ## Starting Caddy
+  ## Starting
 
   Add to your supervision tree:
 
@@ -18,7 +20,7 @@ defmodule Caddy do
   end
   ```
 
-  ## Configuration
+  ## Runtime Configuration
 
   Configuration is stored as raw Caddyfile text. Write native Caddyfile syntax directly:
 
@@ -33,31 +35,42 @@ defmodule Caddy do
     reverse_proxy localhost:3000
   }
   \"\"\")
+
+  :ok = Caddy.sync_to_caddy()
   ```
 
-  If caddy_bin is not specified, Caddy.Server will not start.
-  Set `caddy_bin` to the path of Caddy binary file and start `Caddy.Server`:
+  Runtime Admin API helpers return tagged tuples:
 
   ```elixir
-  Caddy.set_bin("/usr/bin/caddy")
-  Caddy.restart_server()
-  ```
-
-  This will restart server automatically:
-
-  ```elixir
-  Caddy.set_bin!("/usr/bin/caddy")
+  {:ok, config} = Caddy.get_runtime_config()
+  {:ok, upstreams} = Caddy.upstreams()
+  {:ok, certs} = Caddy.certificates()
   ```
 
   ## Application Config
 
+  External mode:
+
   ```elixir
   import Config
 
-  # dump caddy server log to stdout
-  config :caddy, dump_log: false
+  config :caddy,
+    mode: :external,
+    admin_url: "http://localhost:2019"
+  ```
 
-  # caddy server will not start, this is useful for testing
+  Embedded mode:
+
+  ```elixir
+  config :caddy,
+    mode: :embedded,
+    caddy_bin: "/usr/bin/caddy"
+  ```
+
+  Shared options:
+
+  ```elixir
+  config :caddy, dump_log: false
   config :caddy, start: false
   ```
   """
@@ -312,4 +325,31 @@ defmodule Caddy do
       :unconfigured
   """
   defdelegate clear_config, to: Caddy.ConfigManager
+
+  # ============================================================================
+  # Operational Resources
+  # ============================================================================
+
+  @doc "Get current reverse-proxy upstream status from the Admin API."
+  defdelegate upstreams, to: Caddy.Admin.Resources, as: :get_upstreams
+
+  @doc "List certificates known to the default Caddy PKI CA."
+  defdelegate certificates, to: Caddy.Admin.Resources
+
+  @doc "List certificates known to a named Caddy PKI CA."
+  defdelegate certificates(ca_id), to: Caddy.Admin.Resources
+
+  @doc "Get a config node by Caddy `@id`."
+  defdelegate get_by_id(id), to: Caddy.Admin.Resources
+
+  @doc "Patch a config node by Caddy `@id`."
+  defdelegate patch_by_id(id, data), to: Caddy.Admin.Resources
+  defdelegate patch_by_id(id, data, opts), to: Caddy.Admin.Resources
+
+  @doc "Delete a config node by Caddy `@id`."
+  defdelegate delete_by_id(id), to: Caddy.Admin.Resources
+  defdelegate delete_by_id(id, opts), to: Caddy.Admin.Resources
+
+  @doc "Return Caddy binary version and module information."
+  defdelegate version, to: Caddy.Server
 end

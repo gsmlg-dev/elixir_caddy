@@ -3,7 +3,9 @@ defmodule Caddy.Server.Embedded do
   Embedded Caddy Server.
 
   Manages the Caddy binary process directly using Erlang ports.
-  This is used when `config :caddy, mode: :embedded` (default).
+  This is used only when `config :caddy, mode: :embedded`. The default mode is
+  `:external`, where Caddy is managed outside the BEAM and accessed via the
+  Admin API.
 
   The server:
   - Spawns and monitors the Caddy binary process
@@ -23,6 +25,8 @@ defmodule Caddy.Server.Embedded do
   @graceful_shutdown_timeout 5_000
   @shutdown_check_interval 50
 
+  @type status :: :running | :stopped | {:error, term()}
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -37,7 +41,14 @@ defmodule Caddy.Server.Embedded do
         case bootstrap() do
           {:ok, _} ->
             dump_log = Application.get_env(:caddy, :dump_log, false)
-            state = %{port: nil, dump_log: dump_log}
+
+            state = %{
+              port: nil,
+              dump_log: dump_log,
+              caddy_status: :stopped,
+              last_exit_status: nil
+            }
+
             Process.flag(:trap_exit, true)
             {:ok, state, {:continue, :start}}
 
@@ -59,11 +70,23 @@ defmodule Caddy.Server.Embedded do
     Caddy.Telemetry.log_debug("Caddy Server Starting", module: __MODULE__)
     start_time = System.monotonic_time()
     config = ConfigProvider.get_config()
-    port = port_start(config)
-    duration = System.monotonic_time() - start_time
-    Caddy.Telemetry.emit_server_event(:start, %{duration: duration}, %{pid: port})
-    state = state |> Map.put(:port, port)
-    {:noreply, state}
+
+    case port_start(config) do
+      {:ok, port} ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_server_event(:start, %{duration: duration}, %{pid: port})
+        state = %{state | port: port, caddy_status: :running, last_exit_status: nil}
+        {:noreply, state}
+
+      {:error, reason} ->
+        duration = System.monotonic_time() - start_time
+
+        Caddy.Telemetry.emit_server_event(:start_error, %{duration: duration}, %{
+          error: reason
+        })
+
+        {:noreply, %{state | caddy_status: {:error, reason}, last_exit_status: reason}}
+    end
   end
 
   @impl true
@@ -80,7 +103,7 @@ defmodule Caddy.Server.Embedded do
     {:noreply, state}
   end
 
-  def handle_info({port, {:exit_status, exit_status}}, state) do
+  def handle_info({port, {:exit_status, exit_status}}, %{port: port} = state) do
     Caddy.Telemetry.log_warning("Caddy#{inspect(port)}: exit_status: #{exit_status}",
       module: __MODULE__,
       exit_status: exit_status,
@@ -89,11 +112,42 @@ defmodule Caddy.Server.Embedded do
 
     Caddy.Telemetry.emit_server_event(:exit, %{}, %{exit_status: exit_status, port: inspect(port)})
 
-    Process.exit(self(), :normal)
+    state = %{
+      state
+      | port: nil,
+        caddy_status: {:error, exit_status},
+        last_exit_status: exit_status
+    }
+
     {:noreply, state}
   end
 
-  # handle the trapped exit call
+  def handle_info({port, {:exit_status, exit_status}}, state) do
+    Caddy.Telemetry.emit_server_event(:exit, %{}, %{exit_status: exit_status, port: inspect(port)})
+
+    {:noreply, %{state | caddy_status: {:error, exit_status}, last_exit_status: exit_status}}
+  end
+
+  def handle_info({:EXIT, port, reason}, %{port: port} = state) do
+    Caddy.Telemetry.log_warning("Caddy port exited: #{inspect(reason)}",
+      module: __MODULE__,
+      reason: reason,
+      port: inspect(port)
+    )
+
+    Caddy.Telemetry.emit_server_event(:exit, %{}, %{reason: reason, port: inspect(port)})
+
+    state = %{
+      state
+      | port: nil,
+        caddy_status: exit_reason_status(reason),
+        last_exit_status: reason
+    }
+
+    {:noreply, state}
+  end
+
+  # handle trapped exits from non-Caddy linked processes
   def handle_info({:EXIT, _from, reason}, state) do
     Caddy.Telemetry.log_debug("Caddy.Server.Embedded exiting", module: __MODULE__, reason: reason)
     Caddy.Telemetry.emit_server_event(:shutdown, %{}, %{reason: reason})
@@ -122,6 +176,28 @@ defmodule Caddy.Server.Embedded do
   @spec get_caddyfile() :: binary()
   def get_caddyfile do
     Path.expand("Caddyfile", Config.etc_path()) |> File.read!()
+  end
+
+  @doc "Check the embedded Caddy process status."
+  @spec check_status() :: status()
+  def check_status do
+    case Process.whereis(__MODULE__) do
+      nil -> :stopped
+      _pid -> GenServer.call(__MODULE__, :check_status)
+    end
+  end
+
+  @doc "Return embedded Caddy binary version and module info."
+  @spec version() :: {:ok, map()} | {:error, term()}
+  def version do
+    ConfigProvider.get_config()
+    |> Map.get(:bin)
+    |> Config.version_info()
+  end
+
+  @impl true
+  def handle_call(:check_status, _from, state) do
+    {:reply, state.caddy_status, state}
   end
 
   defp bootstrap do
@@ -256,6 +332,12 @@ defmodule Caddy.Server.Embedded do
     end
   end
 
+  defp cleanup(reason, %{port: nil}) do
+    cleanup_pidfile()
+    Caddy.Telemetry.emit_server_event(:cleanup, %{duration: 0}, %{reason: reason})
+    reason
+  end
+
   defp cleanup(reason, %{port: port} = _state) do
     start_time = System.monotonic_time()
 
@@ -312,7 +394,9 @@ defmodule Caddy.Server.Embedded do
       args: args
     })
 
-    port
+    {:ok, port}
+  rescue
+    error in ErlangError -> {:error, {:port_start_failed, error.original}}
   end
 
   defp fixup_env(env) when is_list(env) do
@@ -384,4 +468,7 @@ defmodule Caddy.Server.Embedded do
     {_output, code} = System.cmd("kill", ["-0", "#{pid}"], stderr_to_stdout: true)
     code == 0
   end
+
+  defp exit_reason_status(:normal), do: :stopped
+  defp exit_reason_status(reason), do: {:error, reason}
 end

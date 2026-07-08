@@ -53,8 +53,14 @@ defmodule Caddy.Admin.TransportTest do
       assert {:error, :invalid_url} = Transport.parse_url("http://")
     end
 
-    test "returns error for https (not supported)" do
-      assert {:error, :https_not_supported} = Transport.parse_url("https://localhost:2019")
+    test "parses https://localhost:2019" do
+      assert {:ok, %{type: :tls, host: ~c"localhost", port: 2019}} =
+               Transport.parse_url("https://localhost:2019")
+    end
+
+    test "parses https with default port" do
+      assert {:ok, %{type: :tls, host: ~c"localhost", port: 443}} =
+               Transport.parse_url("https://localhost")
     end
 
     test "returns error for invalid port" do
@@ -72,6 +78,11 @@ defmodule Caddy.Admin.TransportTest do
 
     test "returns host:port for tcp connection" do
       conn_info = %{type: :tcp, host: ~c"localhost", port: 2019}
+      assert Transport.host_header(conn_info) == "localhost:2019"
+    end
+
+    test "returns host:port for tls connection" do
+      conn_info = %{type: :tls, host: ~c"localhost", port: 2019}
       assert Transport.host_header(conn_info) == "localhost:2019"
     end
   end

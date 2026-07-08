@@ -7,6 +7,8 @@ defmodule Caddy.Admin do
   """
   use GenServer
 
+  alias Caddy.Admin.Api
+
   @check_interval 15_000
 
   def start_link(_) do
@@ -26,7 +28,11 @@ defmodule Caddy.Admin do
   end
 
   defp check_caddy_server do
-    %{"listen" => "unix/" <> _} = Caddy.Admin.Api.get_config("admin")
+    case Api.get_config("admin") do
+      {:ok, %{"listen" => "unix/" <> _}} -> :ok
+      {:ok, _admin} -> :ok
+      {:error, reason} -> raise "Caddy admin unavailable: #{inspect(reason)}"
+    end
   rescue
     error ->
       Caddy.Telemetry.log_error("Caddy Admin: check_caddy_server failed #{inspect(error)}",

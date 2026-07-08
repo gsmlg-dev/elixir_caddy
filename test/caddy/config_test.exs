@@ -122,6 +122,28 @@ defmodule Caddy.ConfigTest do
     test "set_bin with validation" do
       assert {:error, _} = ConfigProvider.set_bin("/nonexistent/path/caddy")
     end
+
+    @tag :tmp_dir
+    test "version_info returns version and modules", %{tmp_dir: tmp_dir} do
+      caddy = fake_caddy(tmp_dir, "v2.8.0", "http.handlers.reverse_proxy v2.8.0")
+
+      assert {:ok, %{version: "2.8.0", modules: ["http.handlers.reverse_proxy v2.8.0"]}} =
+               Config.version_info(caddy)
+    end
+
+    @tag :tmp_dir
+    test "check_bin compares minimum supported version", %{tmp_dir: tmp_dir} do
+      original = Application.get_env(:caddy, :minimum_caddy_version)
+      caddy = fake_caddy(tmp_dir, "v2.6.0", "")
+
+      Application.put_env(:caddy, :minimum_caddy_version, "2.7.0")
+
+      try do
+        assert {:error, "Caddy 2.6.0 is older than required 2.7.0"} = Config.check_bin(caddy)
+      after
+        restore_env(:minimum_caddy_version, original)
+      end
+    end
   end
 
   describe "to_caddyfile" do
@@ -571,4 +593,26 @@ defmodule Caddy.ConfigTest do
       assert Enum.all?(env, fn {k, v} -> is_binary(k) and is_binary(v) end)
     end
   end
+
+  defp fake_caddy(tmp_dir, version, modules) do
+    path = Path.join(tmp_dir, "caddy")
+
+    File.write!(path, """
+    #!/bin/sh
+    case "$1" in
+      version)
+        echo "#{version}"
+        ;;
+      list-modules)
+        echo "#{modules}"
+        ;;
+    esac
+    """)
+
+    File.chmod!(path, 0o755)
+    path
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:caddy, key)
+  defp restore_env(key, value), do: Application.put_env(:caddy, key, value)
 end

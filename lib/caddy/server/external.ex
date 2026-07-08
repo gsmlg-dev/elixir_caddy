@@ -16,17 +16,19 @@ defmodule Caddy.Server.External do
       config :caddy, mode: :external
       config :caddy, admin_url: "http://localhost:2019"
       config :caddy, health_interval: 30_000
+      config :caddy, drift_interval: 60_000
+      config :caddy, on_drift: :report
       config :caddy, commands: [
         start: "systemctl start caddy",
         stop: "systemctl stop caddy",
         restart: "systemctl restart caddy",
-        status: "systemctl is-active caddy"
+        status: {"systemctl", ["is-active", "caddy"]}
       ]
 
   ## State
 
   The server maintains:
-  - `caddy_status` - Current known status (`:running`, `:stopped`, `:unknown`)
+  - `caddy_status` - Current known status (`:running`, `:stopped`, `:unreachable`, `:unknown`)
   - `config_pushed` - Whether initial config has been pushed
   - `last_health_check` - Timestamp of last successful health check
   """
@@ -37,11 +39,15 @@ defmodule Caddy.Server.External do
   alias Caddy.Config
   alias Caddy.ConfigManager
 
+  @type caddy_status :: :running | :stopped | :unreachable | :unknown
+
   @type state :: %{
-          caddy_status: :running | :stopped | :unknown,
+          caddy_status: caddy_status(),
           config_pushed: boolean(),
           last_health_check: DateTime.t() | nil,
-          health_interval: pos_integer()
+          health_interval: pos_integer(),
+          drift_interval: pos_integer() | nil,
+          on_drift: :report | :resync
         }
 
   # Client API
@@ -56,7 +62,7 @@ defmodule Caddy.Server.External do
   @doc """
   Check the current status of the external Caddy instance.
   """
-  @spec check_status() :: :running | :stopped | :unknown
+  @spec check_status() :: caddy_status()
   def check_status do
     GenServer.call(__MODULE__, :check_status)
   end
@@ -107,9 +113,8 @@ defmodule Caddy.Server.External do
   """
   @spec get_caddyfile() :: binary()
   def get_caddyfile do
-    # Api.get_config/0 returns a bare map (not a tuple) on success, nil on error
     case Api.get_config() do
-      config when is_map(config) ->
+      {:ok, config} when is_map(config) ->
         JSON.encode!(config)
 
       _ ->
@@ -136,23 +141,31 @@ defmodule Caddy.Server.External do
 
       true ->
         health_interval = Config.health_interval()
+        drift_interval = Config.drift_interval()
+        on_drift = Config.on_drift()
 
         state = %{
           caddy_status: :unknown,
           config_pushed: false,
           last_health_check: nil,
-          health_interval: health_interval
+          health_interval: health_interval,
+          drift_interval: drift_interval,
+          on_drift: on_drift
         }
 
         Caddy.Telemetry.log_info("External Caddy server starting",
           module: __MODULE__,
           admin_url: Config.admin_url(),
-          health_interval: health_interval
+          health_interval: health_interval,
+          drift_interval: drift_interval,
+          on_drift: on_drift
         )
 
         Caddy.Telemetry.emit_external_event(:init, %{}, %{
           admin_url: Config.admin_url(),
-          health_interval: health_interval
+          health_interval: health_interval,
+          drift_interval: drift_interval,
+          on_drift: on_drift
         })
 
         {:ok, state, {:continue, :initial_setup}}
@@ -193,6 +206,7 @@ defmodule Caddy.Server.External do
 
     # Schedule periodic health check
     schedule_health_check(state.health_interval)
+    schedule_drift_check(state.drift_interval)
 
     {:noreply, state}
   end
@@ -268,6 +282,37 @@ defmodule Caddy.Server.External do
     {:noreply, state}
   end
 
+  def handle_info(:drift_check, state) do
+    start_time = System.monotonic_time()
+    result = ConfigManager.check_sync_status()
+
+    action =
+      case result do
+        {:ok, {:drift_detected, _diff}} when state.on_drift == :resync ->
+          ConfigManager.sync_to_caddy()
+
+        {:ok, {:drift_detected, _diff}} ->
+          :reported
+
+        {:ok, :in_sync} ->
+          :none
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+
+    duration = System.monotonic_time() - start_time
+
+    Caddy.Telemetry.emit_external_event(:drift_check, %{duration: duration}, %{
+      result: result,
+      action: action,
+      policy: state.on_drift
+    })
+
+    schedule_drift_check(state.drift_interval)
+    {:noreply, state}
+  end
+
   def handle_info(_msg, state) do
     {:noreply, state}
   end
@@ -289,6 +334,13 @@ defmodule Caddy.Server.External do
     Process.send_after(self(), :health_check, interval)
   end
 
+  defp schedule_drift_check(nil), do: :ok
+
+  defp schedule_drift_check(interval) do
+    Process.send_after(self(), :drift_check, interval)
+    :ok
+  end
+
   defp do_health_check(state) do
     start_time = System.monotonic_time()
     old_status = state.caddy_status
@@ -298,13 +350,8 @@ defmodule Caddy.Server.External do
         {:ok, %{status: :healthy}} ->
           :running
 
-        {:error, "Connection failed: " <> reason} ->
-          # Check if it's a connection refused error
-          if String.contains?(reason, "econnrefused") do
-            :stopped
-          else
-            :unknown
-          end
+        {:error, {:connection_failed, reason}} ->
+          classify_connection_failure(reason)
 
         {:error, _reason} ->
           :unknown
@@ -352,16 +399,26 @@ defmodule Caddy.Server.External do
 
       cmd_string when is_binary(cmd_string) ->
         execute_shell_command(cmd_string)
+
+      {executable, args} when is_binary(executable) and is_list(args) ->
+        execute_command_tuple(executable, args)
+
+      invalid ->
+        {:error, {:invalid_command_config, command, invalid}}
     end
   end
 
-  defp execute_shell_command(""), do: {:error, :empty_command}
+  defp execute_shell_command(cmd_string) when is_binary(cmd_string) do
+    case String.trim(cmd_string) do
+      "" -> {:error, :empty_command}
+      trimmed -> execute_command_tuple("sh", ["-c", trimmed], display_command: trimmed)
+    end
+  end
 
-  defp execute_shell_command(cmd_string) do
-    # Parse command string into executable and args
-    [executable | args] = String.split(cmd_string)
+  defp execute_command_tuple(executable, args, opts \\ []) do
+    display_command = Keyword.get(opts, :display_command, Enum.join([executable | args], " "))
 
-    Caddy.Telemetry.log_debug("Executing command: #{cmd_string}",
+    Caddy.Telemetry.log_debug("Executing command: #{display_command}",
       module: __MODULE__,
       executable: executable,
       args: args
@@ -372,7 +429,7 @@ defmodule Caddy.Server.External do
         {:ok, String.trim(output)}
 
       {output, exit_code} ->
-        Caddy.Telemetry.log_warning("Command failed: #{cmd_string}",
+        Caddy.Telemetry.log_warning("Command failed: #{display_command}",
           module: __MODULE__,
           exit_code: exit_code,
           output: output
@@ -397,28 +454,26 @@ defmodule Caddy.Server.External do
 
       :ok
     else
-      # Api.adapt/1 returns a bare map (not a tuple): non-empty map on success, %{} on error
-      json_config = Api.adapt(caddyfile)
+      with {:ok, json_config} when is_map(json_config) and map_size(json_config) > 0 <-
+             Api.adapt(caddyfile),
+           {:ok, _response} <- Api.load(json_config) do
+        Caddy.Telemetry.log_info("Configuration pushed to external Caddy",
+          module: __MODULE__
+        )
 
-      if is_map(json_config) and map_size(json_config) > 0 do
-        # Api.load/1 returns %{status: code, body: body} or %{status: 0, body: nil} on error
-        case Api.load(json_config) do
-          %{status: status} when status in 200..299 ->
-            Caddy.Telemetry.log_info("Configuration pushed to external Caddy",
-              module: __MODULE__
-            )
-
-            :ok
-
-          %{status: 0} ->
-            {:error, :load_connection_failed}
-
-          %{status: status} ->
-            {:error, {:load_failed, status}}
-        end
+        :ok
       else
-        {:error, :invalid_adapt_response}
+        {:ok, _empty} -> {:error, :invalid_adapt_response}
+        {:error, reason} -> {:error, reason}
       end
     end
   end
+
+  defp classify_connection_failure(reason) when reason in [:econnrefused, :closed], do: :stopped
+  defp classify_connection_failure(reason) when reason in [:timeout, :etimedout], do: :unreachable
+
+  defp classify_connection_failure(reason)
+       when reason in [:ehostunreach, :enetunreach, :nxdomain], do: :unreachable
+
+  defp classify_connection_failure(_reason), do: :unknown
 end
