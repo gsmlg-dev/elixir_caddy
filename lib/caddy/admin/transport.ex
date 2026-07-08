@@ -9,6 +9,7 @@ defmodule Caddy.Admin.Transport do
 
   - `unix:///path/to/socket` - Unix domain socket
   - `http://host:port` - TCP connection (default port: 2019)
+  - `https://host:port` - TLS connection with optional mTLS (`:admin_tls`)
 
   ## Examples
 
@@ -23,9 +24,11 @@ defmodule Caddy.Admin.Transport do
 
   @type unix_conn :: %{type: :unix, path: binary()}
   @type tcp_conn :: %{type: :tcp, host: charlist(), port: non_neg_integer()}
-  @type conn_info :: unix_conn() | tcp_conn()
+  @type tls_conn :: %{type: :tls, host: charlist(), port: non_neg_integer()}
+  @type conn_info :: unix_conn() | tcp_conn() | tls_conn()
 
   @default_caddy_port 2019
+  @default_tls_port 443
   @connect_timeout 5_000
 
   @doc """
@@ -54,8 +57,8 @@ defmodule Caddy.Admin.Transport do
     parse_tcp(rest)
   end
 
-  def parse_url("https://" <> _rest) do
-    {:error, :https_not_supported}
+  def parse_url("https://" <> rest) when byte_size(rest) > 0 do
+    parse_tcp(rest, :tls, @default_tls_port)
   end
 
   def parse_url(_) do
@@ -118,6 +121,26 @@ defmodule Caddy.Admin.Transport do
     )
   end
 
+  def connect(%{type: :tls, host: host, port: port}, opts) do
+    timeout = Keyword.get(opts, :timeout, @connect_timeout)
+    packet = Keyword.get(opts, :packet, :http_bin)
+
+    with {:ok, _} <- Application.ensure_all_started(:ssl) do
+      :ssl.connect(
+        host,
+        port,
+        [
+          :binary,
+          {:active, false},
+          {:packet, packet},
+          {:server_name_indication, host}
+          | tls_options()
+        ],
+        timeout
+      )
+    end
+  end
+
   @doc """
   Connect using the current configuration.
 
@@ -145,19 +168,43 @@ defmodule Caddy.Admin.Transport do
     "#{host}:#{port}"
   end
 
+  def host_header(%{type: :tls, host: host, port: port}) do
+    "#{host}:#{port}"
+  end
+
+  @doc false
+  def socket_module(%{type: :tls}), do: :ssl
+  def socket_module(_conn_info), do: :gen_tcp
+
+  @doc false
+  def send(socket_module, socket, data), do: socket_module.send(socket, data)
+
+  @doc false
+  def recv(socket_module, socket, length, timeout),
+    do: socket_module.recv(socket, length, timeout)
+
+  @doc false
+  def setopts(:ssl, socket, opts), do: :ssl.setopts(socket, opts)
+  def setopts(:gen_tcp, socket, opts), do: :inet.setopts(socket, opts)
+
+  @doc false
+  def close(socket_module, socket), do: socket_module.close(socket)
+
   # Parse TCP host:port from URL remainder
-  defp parse_tcp(host_port) do
+  defp parse_tcp(host_port), do: parse_tcp(host_port, :tcp, @default_caddy_port)
+
+  defp parse_tcp(host_port, type, default_port) do
     # Remove any trailing path
     host_port = host_port |> String.split("/") |> List.first()
 
     case String.split(host_port, ":") do
       [host] when byte_size(host) > 0 ->
-        {:ok, %{type: :tcp, host: String.to_charlist(host), port: @default_caddy_port}}
+        {:ok, %{type: type, host: String.to_charlist(host), port: default_port}}
 
       [host, port_str] when byte_size(host) > 0 ->
         case Integer.parse(port_str) do
           {port, ""} when port > 0 and port < 65_536 ->
-            {:ok, %{type: :tcp, host: String.to_charlist(host), port: port}}
+            {:ok, %{type: type, host: String.to_charlist(host), port: port}}
 
           _ ->
             {:error, :invalid_port}
@@ -166,5 +213,15 @@ defmodule Caddy.Admin.Transport do
       _ ->
         {:error, :invalid_host}
     end
+  end
+
+  defp tls_options do
+    admin_tls = Caddy.Config.admin_tls()
+    verify = if Keyword.has_key?(admin_tls, :cacertfile), do: :verify_peer, else: :verify_none
+
+    admin_tls
+    |> Keyword.take([:certfile, :keyfile, :cacertfile])
+    |> Enum.map(fn {key, value} -> {key, String.to_charlist(value)} end)
+    |> Keyword.put(:verify, verify)
   end
 end

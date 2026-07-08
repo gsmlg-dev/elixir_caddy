@@ -122,6 +122,20 @@ defmodule Caddy.Telemetry do
   end
 
   @doc """
+  Emits a telemetry event for TLS and certificate visibility.
+
+  ## Event Types
+
+  - `:certificate_seen` - When a certificate is returned by Caddy's PKI API
+  - `:certificate_expiring` - When a certificate is inside the configured warning window
+  """
+  @spec emit_tls_event(atom(), map(), keyword() | map()) :: :ok
+  def emit_tls_event(event_type, measurements \\ %{}, metadata \\ []) do
+    metadata = Map.new(metadata)
+    :telemetry.execute([:caddy, :tls, event_type], measurements, metadata)
+  end
+
+  @doc """
   Emits a telemetry event for application state changes.
 
   ## Event: [:caddy, :state, :changed]
@@ -155,6 +169,7 @@ defmodule Caddy.Telemetry do
   - `:init` - When external server initializes
   - `:health_check` - When health check is performed
   - `:command_executed` - When a system command is executed
+  - `:drift_check` - When external mode checks runtime drift
   - `:config_pushed` - When configuration is pushed to external Caddy
   - `:status_changed` - When Caddy status changes (running/stopped/unknown)
   - `:terminate` - When external server terminates
@@ -339,6 +354,7 @@ defmodule Caddy.Telemetry do
       # External mode events
       [:caddy, :external, :init],
       [:caddy, :external, :health_check],
+      [:caddy, :external, :drift_check],
       [:caddy, :external, :command_executed],
       [:caddy, :external, :config_pushed],
       [:caddy, :external, :status_changed],
@@ -349,7 +365,10 @@ defmodule Caddy.Telemetry do
       [:caddy, :metrics, :collected],
       [:caddy, :metrics, :fetch_error],
       [:caddy, :metrics, :poller_started],
-      [:caddy, :metrics, :poller_stopped]
+      [:caddy, :metrics, :poller_stopped],
+      # TLS/certificate events
+      [:caddy, :tls, :certificate_seen],
+      [:caddy, :tls, :certificate_expiring]
     ]
   end
 end

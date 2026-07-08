@@ -5,13 +5,30 @@ defmodule Caddy.Admin.RequestBehaviour do
 
   alias Caddy.Admin.Request
 
-  @callback get(path :: binary()) :: {:ok, Request.t(), map() | binary()}
+  @type response_body :: map() | list() | binary()
+  @type result :: {:ok, Request.t(), response_body()} | {:error, term()}
+
+  @callback get(path :: binary()) :: result()
+  @callback get(path :: binary(), headers :: list()) :: result()
   @callback post(path :: binary(), data :: binary(), content_type :: binary()) ::
-              {:ok, Request.t(), map() | binary()}
+              result()
+  @callback post(path :: binary(), data :: binary(), content_type :: binary(), headers :: list()) ::
+              result()
   @callback patch(path :: binary(), data :: binary(), content_type :: binary()) ::
-              {:ok, Request.t(), map() | binary()}
+              result()
+  @callback patch(path :: binary(), data :: binary(), content_type :: binary(), headers :: list()) ::
+              result()
   @callback put(path :: binary(), data :: binary(), content_type :: binary()) ::
-              {:ok, Request.t(), map() | binary()}
+              result()
+  @callback put(path :: binary(), data :: binary(), content_type :: binary(), headers :: list()) ::
+              result()
   @callback delete(path :: binary(), data :: binary(), content_type :: binary()) ::
-              {:ok, Request.t(), map() | binary()}
+              result()
+  @callback delete(
+              path :: binary(),
+              data :: binary(),
+              content_type :: binary(),
+              headers :: list()
+            ) ::
+              result()
 end

@@ -105,20 +105,30 @@ defmodule Caddy.ConfigManager do
     start_time = System.monotonic_time()
 
     case Api.get_config() do
-      nil ->
+      {:ok, config} when is_map(config) ->
+        duration = System.monotonic_time() - start_time
+        Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{success: true})
+        {:ok, config}
+
+      {:ok, _config} ->
         duration = System.monotonic_time() - start_time
 
         Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{
           success: false,
-          error: :not_available
+          error: :invalid_runtime_config
         })
 
-        {:error, :caddy_not_available}
+        {:error, :invalid_runtime_config}
 
-      config when is_map(config) ->
+      {:error, reason} ->
         duration = System.monotonic_time() - start_time
-        Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{success: true})
-        {:ok, config}
+
+        Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{
+          success: false,
+          error: reason
+        })
+
+        {:error, reason}
     end
   end
 
@@ -131,17 +141,7 @@ defmodule Caddy.ConfigManager do
     start_time = System.monotonic_time()
 
     case Api.get_config(path) do
-      nil ->
-        duration = System.monotonic_time() - start_time
-
-        Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{
-          success: false,
-          path: path
-        })
-
-        {:error, :not_found}
-
-      config ->
+      {:ok, config} ->
         duration = System.monotonic_time() - start_time
 
         Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{
@@ -150,6 +150,28 @@ defmodule Caddy.ConfigManager do
         })
 
         {:ok, config}
+
+      {:error, {:http_error, 404, _body}} ->
+        duration = System.monotonic_time() - start_time
+
+        Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{
+          success: false,
+          path: path,
+          error: :not_found
+        })
+
+        {:error, :not_found}
+
+      {:error, reason} ->
+        duration = System.monotonic_time() - start_time
+
+        Telemetry.emit_config_manager_event(:get_runtime, %{duration: duration}, %{
+          success: false,
+          path: path,
+          error: reason
+        })
+
+        {:error, reason}
     end
   end
 
@@ -380,12 +402,9 @@ defmodule Caddy.ConfigManager do
            {:ok, caddyfile} <- {:ok, ConfigProvider.get_caddyfile()},
            :ok <- if(force?, do: :ok, else: maybe_validate(caddyfile, true)),
            {:ok, json_config} <- ConfigProvider.adapt(caddyfile),
-           %{status: status} when status in 200..299 <- Api.load(JSON.encode!(json_config)) do
+           {:ok, _response} <- Api.load(json_config) do
         :ok
       else
-        %{status: status, body: body} ->
-          {:error, {:http_error, status, body}}
-
         {:error, reason} ->
           {:error, reason}
       end
@@ -476,16 +495,10 @@ defmodule Caddy.ConfigManager do
     result =
       case path do
         "/" ->
-          case Api.load(JSON.encode!(config)) do
-            %{status: status} when status in 200..299 -> :ok
-            %{status: status, body: body} -> {:error, {:http_error, status, body}}
-          end
+          api_result_to_ok(Api.load(config))
 
         _ ->
-          case Api.patch_config(path, config) do
-            nil -> {:error, :patch_failed}
-            _ -> :ok
-          end
+          api_result_to_ok(Api.patch_config(path, config))
       end
 
     duration = System.monotonic_time() - start_time
@@ -508,10 +521,7 @@ defmodule Caddy.ConfigManager do
           {:error, :no_rollback_available}
 
         config ->
-          case Api.load(JSON.encode!(config)) do
-            %{status: status} when status in 200..299 -> :ok
-            %{status: status, body: body} -> {:error, {:http_error, status, body}}
-          end
+          api_result_to_ok(Api.load(config))
       end
 
     duration = System.monotonic_time() - start_time
@@ -621,17 +631,20 @@ defmodule Caddy.ConfigManager do
 
   defp maybe_backup_runtime(true, _state) do
     case Api.get_config() do
-      nil -> {:ok, nil}
-      config -> {:ok, config}
+      {:ok, config} -> {:ok, config}
+      {:error, _reason} -> {:ok, nil}
     end
   end
 
   defp maybe_update_last_known_good(state) do
     case Api.get_config() do
-      nil -> state
-      config -> Map.put(state, :last_known_good_config, config)
+      {:ok, config} -> Map.put(state, :last_known_good_config, config)
+      {:error, _reason} -> state
     end
   end
+
+  defp api_result_to_ok({:ok, _value}), do: :ok
+  defp api_result_to_ok({:error, reason}), do: {:error, reason}
 
   defp configs_equivalent?(a, b) when is_map(a) and is_map(b) do
     # Normalize by removing transient fields and comparing

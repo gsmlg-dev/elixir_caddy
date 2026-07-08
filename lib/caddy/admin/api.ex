@@ -2,490 +2,169 @@ defmodule Caddy.Admin.Api do
   @moduledoc """
   High-level interface to the Caddy Admin API.
 
-  Provides a convenient Elixir API for interacting with Caddy's admin endpoints,
-  including configuration management, server control, and health monitoring.
-
-  ## Features
-
-  - Configuration loading and reloading
-  - Caddyfile adaptation (convert to JSON)
-  - Health checks and server information
-  - Telemetry integration for monitoring
-  - Mock support for testing via RequestBehaviour
-
-  ## Examples
-
-      # Get current configuration
-      {:ok, config} = Caddy.Admin.Api.get_config()
-
-      # Load new configuration
-      Caddy.Admin.Api.load(new_config)
-
-      # Adapt Caddyfile to JSON
-      {:ok, json_config} = Caddy.Admin.Api.adapt(caddyfile_content)
-
-      # Check server health
-      {:ok, status} = Caddy.Admin.Api.health_check()
+  All functions return tagged tuples: `{:ok, value}` on success or
+  `{:error, reason}` on failure.
   """
+
+  alias Caddy.Admin.Request
+
+  @type response :: Request.t()
+  @type result(value) :: {:ok, value} | {:error, term()}
+
   defp request_module, do: Application.get_env(:caddy, :request_module, Caddy.Admin.Request)
 
   @doc """
-  ## Admin API
-
-  ```
-  POST /load Sets or replaces the active configuration
-  POST /stop Stops the active configuration and exits the process
-  GET /config/[path] Exports the config at the named path
-  POST /config/[path] Sets or replaces object; appends to array
-  PUT /config/[path] Creates new object; inserts into array
-  PATCH /config/[path] Replaces an existing object or array element
-  DELETE /config/[path] Deletes the value at the named path
-  Using @id in JSON Easily traverse into the config structure
-  Concurrent config changes Avoid collisions when making unsynchronized changes to config
-  POST /adapt Adapts a configuration to JSON without running it
-  GET /pki/ca/<id> Returns information about a particular PKI app CA
-  GET /pki/ca/<id>/certificates Returns the certificate chain of a particular PKI app CA
-  GET /reverse_proxy/upstreams Returns the current status of the configured proxy upstreams
-  ```
+  Send a GET request to an Admin API path.
   """
-  def api, do: nil
+  @spec get(binary()) :: result(response())
+  def get(path), do: request(:get, path, nil, nil, :request, %{method: :get, path: path})
 
   @doc """
-  Get info from caddy server
+  Sets or replaces the active configuration.
+
+  Map inputs are loaded directly. This avoids shallow-merging new config into the
+  current runtime config.
   """
-  def get(path) do
-    start_time = System.monotonic_time()
+  @spec load(map() | binary(), keyword()) :: result(response())
+  def load(conf, opts \\ [])
 
-    case request_module().get("#{path}") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
+  def load(conf, opts) when is_map(conf) do
+    conf
+    |> JSON.encode!()
+    |> load(opts)
+  end
 
-        Caddy.Telemetry.emit_api_event(:request, %{duration: duration, status: resp.status}, %{
-          method: :get,
-          path: path
-        })
-
-        resp |> Map.put(:body, body)
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:error, %{duration: duration}, %{
-          method: :get,
-          path: path,
-          error: reason
-        })
-
-        %{status: 0, body: nil}
-    end
+  def load(conf, opts) when is_binary(conf) do
+    request(:post, "/load", conf, "application/json", :load, %{payload_size: byte_size(conf)},
+      headers: headers_from_opts(opts)
+    )
   end
 
   @doc """
-  Sets or replaces the active configuration
+  Stops the active configuration and exits the Caddy process.
   """
-  @spec load(map() | binary()) :: Caddy.Admin.Request.t()
-  def load(conf)
-
-  def load(conf) when is_map(conf) do
-    case get_config() do
-      current when is_map(current) ->
-        current
-        |> Map.merge(conf)
-        |> JSON.encode!()
-        |> load()
-
-      nil ->
-        conf
-        |> JSON.encode!()
-        |> load()
-    end
-  end
-
-  def load(conf) when is_binary(conf) do
-    start_time = System.monotonic_time()
-
-    case request_module().post("/load", conf, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:load, %{duration: duration, status: resp.status}, %{
-          payload_size: byte_size(conf)
-        })
-
-        resp |> Map.put(:body, body)
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:load_error, %{duration: duration}, %{
-          error: reason,
-          payload_size: byte_size(conf)
-        })
-
-        %{status: 0, body: nil}
-    end
-  end
-
-  @doc """
-  Stops the active configuration and exits the process
-  """
+  @spec stop() :: result(response())
   def stop do
-    start_time = System.monotonic_time()
-
-    case request_module().post("/stop", "", "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:stop, %{duration: duration, status: resp.status}, %{
-          method: :post
-        })
-
-        resp |> Map.put(:body, body)
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_api_event(:stop_error, %{duration: duration}, %{error: reason})
-        %{status: 0, body: nil}
-    end
+    request(:post, "/stop", "", "application/json", :stop, %{method: :post})
   end
 
   @doc """
-  Exports the config at the named path
+  Exports the config at the named path.
   """
-  def get_config(path) when is_binary(path) do
-    start_time = System.monotonic_time()
+  @spec get_config() :: result(map())
+  def get_config, do: get_config_path("/")
 
-    case request_module().get("/config/#{path}") do
-      {:ok, _resp, body} ->
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_api_event(:get_config, %{duration: duration}, %{path: path})
-        body
+  @spec get_config(binary()) :: result(term())
+  def get_config(path) when is_binary(path), do: get_config_path("/config/#{path}")
 
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
+  @doc """
+  Exports config with the response ETag for later `If-Match` updates.
+  """
+  @spec get_config_with_etag() :: result(%{config: term(), etag: binary() | nil})
+  def get_config_with_etag, do: get_config_with_etag_path("/config/")
 
-        Caddy.Telemetry.emit_api_event(:get_config_error, %{duration: duration}, %{
-          path: path,
-          error: reason
-        })
+  @spec get_config_with_etag(binary()) :: result(%{config: term(), etag: binary() | nil})
+  def get_config_with_etag(path) when is_binary(path),
+    do: get_config_with_etag_path("/config/#{path}")
 
-        nil
-    end
-  end
+  @doc """
+  Post config at the root path or a named path.
+  """
+  @spec post_config(map(), keyword()) :: result(term())
+  def post_config(data, opts \\ [])
 
-  def get_config do
-    start_time = System.monotonic_time()
+  def post_config(data, opts) when is_map(data) and is_list(opts),
+    do: post_config_path("/", data, opts)
 
-    case request_module().get("/config/") do
-      {:ok, _resp, body} ->
-        duration = System.monotonic_time() - start_time
-        Caddy.Telemetry.emit_api_event(:get_config, %{duration: duration}, %{path: "/"})
-        body
+  def post_config(path, data) when is_binary(path) and is_map(data),
+    do: post_config_path(path, data, [])
 
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:get_config_error, %{duration: duration}, %{
-          path: "/",
-          error: reason
-        })
-
-        nil
-    end
+  @spec post_config(binary(), map(), keyword()) :: result(term())
+  def post_config(path, data, opts) when is_binary(path) and is_map(data) and is_list(opts) do
+    post_config_path(path, data, opts)
   end
 
   @doc """
-  Post the config at the named path
+  Put config at the root path or a named path.
   """
-  def post_config(path, data) when is_binary(path) do
-    start_time = System.monotonic_time()
-    data_string = JSON.encode!(data)
+  @spec put_config(map(), keyword()) :: result(term())
+  def put_config(data, opts \\ [])
 
-    case request_module().post("/config/#{path}", data_string, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
+  def put_config(data, opts) when is_map(data) and is_list(opts),
+    do: put_config_path("/", data, opts)
 
-        Caddy.Telemetry.emit_api_event(
-          :post_config,
-          %{duration: duration, status: resp.status},
-          %{path: path, payload_size: byte_size(data_string)}
-        )
+  def put_config(path, data) when is_binary(path) and is_map(data),
+    do: put_config_path(path, data, [])
 
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:post_config_error, %{duration: duration}, %{
-          path: path,
-          error: reason,
-          payload_size: byte_size(data_string)
-        })
-
-        nil
-    end
-  end
-
-  def post_config(data) do
-    start_time = System.monotonic_time()
-    data_string = JSON.encode!(data)
-
-    case request_module().post("/config/", data_string, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(
-          :post_config,
-          %{duration: duration, status: resp.status},
-          %{path: "/", payload_size: byte_size(data_string)}
-        )
-
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:post_config_error, %{duration: duration}, %{
-          path: "/",
-          error: reason,
-          payload_size: byte_size(data_string)
-        })
-
-        nil
-    end
+  @spec put_config(binary(), map(), keyword()) :: result(term())
+  def put_config(path, data, opts) when is_binary(path) and is_map(data) and is_list(opts) do
+    put_config_path(path, data, opts)
   end
 
   @doc """
-  Put the config at the named path
+  Patch config at the root path or a named path.
   """
-  def put_config(path, data) when is_binary(path) do
-    start_time = System.monotonic_time()
-    data_string = JSON.encode!(data)
+  @spec patch_config(map(), keyword()) :: result(term())
+  def patch_config(data, opts \\ [])
 
-    case request_module().put("/config/#{path}", data_string, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
+  def patch_config(data, opts) when is_map(data) and is_list(opts),
+    do: patch_config_path("/", data, opts)
 
-        Caddy.Telemetry.emit_api_event(:put_config, %{duration: duration, status: resp.status}, %{
-          path: path,
-          payload_size: byte_size(data_string)
-        })
+  def patch_config(path, data) when is_binary(path) and is_map(data),
+    do: patch_config_path(path, data, [])
 
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:put_config_error, %{duration: duration}, %{
-          path: path,
-          error: reason,
-          payload_size: byte_size(data_string)
-        })
-
-        nil
-    end
-  end
-
-  def put_config(data) do
-    start_time = System.monotonic_time()
-    data_string = JSON.encode!(data)
-
-    case request_module().put("/config/", data_string, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:put_config, %{duration: duration, status: resp.status}, %{
-          path: "/",
-          payload_size: byte_size(data_string)
-        })
-
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:put_config_error, %{duration: duration}, %{
-          path: "/",
-          error: reason,
-          payload_size: byte_size(data_string)
-        })
-
-        nil
-    end
+  @spec patch_config(binary(), map(), keyword()) :: result(term())
+  def patch_config(path, data, opts) when is_binary(path) and is_map(data) and is_list(opts) do
+    patch_config_path(path, data, opts)
   end
 
   @doc """
-  Patch the config at the named path
+  Delete config at the root path or a named path.
   """
-  def patch_config(path, data) when is_binary(path) do
-    start_time = System.monotonic_time()
-    data_string = JSON.encode!(data)
+  @spec delete_config(keyword()) :: result(term())
+  def delete_config(opts \\ [])
 
-    case request_module().patch("/config/#{path}", data_string, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(
-          :patch_config,
-          %{duration: duration, status: resp.status},
-          %{path: path, payload_size: byte_size(data_string)}
-        )
-
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:patch_config_error, %{duration: duration}, %{
-          path: path,
-          error: reason,
-          payload_size: byte_size(data_string)
-        })
-
-        nil
-    end
-  end
-
-  def patch_config(data) do
-    start_time = System.monotonic_time()
-    data_string = JSON.encode!(data)
-
-    case request_module().patch("/config/", data_string, "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(
-          :patch_config,
-          %{duration: duration, status: resp.status},
-          %{path: "/", payload_size: byte_size(data_string)}
-        )
-
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:patch_config_error, %{duration: duration}, %{
-          path: "/",
-          error: reason,
-          payload_size: byte_size(data_string)
-        })
-
-        nil
-    end
-  end
+  @spec delete_config(binary(), keyword()) :: result(term())
+  def delete_config(path) when is_binary(path), do: delete_config_path(path, [])
+  def delete_config(opts) when is_list(opts), do: delete_config_path("/", opts)
+  def delete_config(path, opts) when is_binary(path), do: delete_config_path(path, opts)
 
   @doc """
-  Delete the config at the named path
+  Adapts a Caddyfile to JSON without running it.
   """
-  def delete_config(path) when is_binary(path) do
-    start_time = System.monotonic_time()
-
-    case request_module().delete("/config/#{path}", "", "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(
-          :delete_config,
-          %{duration: duration, status: resp.status},
-          %{path: path}
-        )
-
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:delete_config_error, %{duration: duration}, %{
-          path: path,
-          error: reason
-        })
-
-        nil
-    end
-  end
-
-  def delete_config do
-    start_time = System.monotonic_time()
-
-    case request_module().delete("/config/", "", "application/json") do
-      {:ok, resp, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(
-          :delete_config,
-          %{duration: duration, status: resp.status},
-          %{path: "/"}
-        )
-
-        body
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:delete_config_error, %{duration: duration}, %{
-          path: "/",
-          error: reason
-        })
-
-        nil
-    end
-  end
-
-  @doc """
-  Adapts a configuration to JSON without running it
-  """
-  @spec adapt(binary) :: map()
+  @spec adapt(binary()) :: result(map())
   def adapt(conf) do
-    start_time = System.monotonic_time()
-
-    case request_module().post("/adapt", conf, "application/json") do
-      {:ok, resp, json_conf} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:adapt, %{duration: duration, status: resp.status}, %{
-          payload_size: byte_size(conf)
-        })
-
-        json_conf
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:adapt_error, %{duration: duration}, %{
-          error: reason,
-          payload_size: byte_size(conf)
-        })
-
-        %{}
+    with {:ok, response} <-
+           request(:post, "/adapt", conf, "application/json", :adapt, %{
+             payload_size: byte_size(conf)
+           }) do
+      {:ok, response.body}
     end
   end
 
   @doc """
-  Check server health status
+  Cheap liveness check using Caddy's root Admin API endpoint.
   """
-  @spec health_check() :: {:ok, map()} | {:error, binary()}
+  @spec health_check() :: result(map())
   def health_check do
     start_time = System.monotonic_time()
 
-    case request_module().get("/config/") do
-      {:ok, %{status: 200}, body} ->
+    case request_module().get("/") do
+      {:ok, %{status: status}, _body} when status in 200..299 ->
+        duration = System.monotonic_time() - start_time
+        Caddy.Telemetry.emit_api_event(:health_check, %{duration: duration, status: status}, %{})
+        {:ok, %{status: :healthy}}
+
+      {:ok, %{status: status}, body} ->
         duration = System.monotonic_time() - start_time
 
-        Caddy.Telemetry.emit_api_event(:health_check, %{duration: duration, status: 200}, %{
-          method: :get
-        })
+        Caddy.Telemetry.emit_api_event(
+          :health_check_error,
+          %{duration: duration, status: status},
+          %{}
+        )
 
-        {:ok, %{status: :healthy, config_loaded: body != %{}}}
-
-      {:ok, %{status: status}, _} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:health_check, %{duration: duration, status: status}, %{
-          method: :get
-        })
-
-        {:error, "Server returned status #{status}"}
+        {:error, {:http_error, status, body}}
 
       {:error, reason} ->
         duration = System.monotonic_time() - start_time
@@ -494,103 +173,247 @@ defmodule Caddy.Admin.Api do
           error: reason
         })
 
-        {:error, "Connection failed: #{inspect(reason)}"}
+        {:error, {:connection_failed, reason}}
     end
   end
 
   @doc """
   Fetch Prometheus metrics from Caddy's metrics endpoint.
-
-  The metrics endpoint must be enabled in Caddy configuration:
-
-      {
-        servers {
-          metrics
-        }
-      }
-
-  Returns the raw Prometheus exposition format text.
   """
-  @spec get_metrics(binary()) :: {:ok, binary()} | {:error, term()}
+  @spec get_metrics(binary()) :: result(binary())
   def get_metrics(endpoint \\ "/metrics") do
-    start_time = System.monotonic_time()
-
-    case request_module().get(endpoint) do
-      {:ok, %{status: 200}, body} when is_binary(body) ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:get_metrics, %{duration: duration, status: 200}, %{
-          endpoint: endpoint,
-          size: byte_size(body)
-        })
-
-        {:ok, body}
-
-      {:ok, %{status: 200}, body} when is_map(body) ->
-        # Metrics endpoint should return text, not JSON
-        # If it's a map, convert to string
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:get_metrics, %{duration: duration, status: 200}, %{
-          endpoint: endpoint
-        })
-
-        {:ok, JSON.encode!(body)}
-
-      {:ok, %{status: status}, _} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:get_metrics_error, %{duration: duration}, %{
-          endpoint: endpoint,
-          status: status
-        })
-
-        {:error, {:http_error, status}}
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:get_metrics_error, %{duration: duration}, %{
-          endpoint: endpoint,
-          error: reason
-        })
-
-        {:error, reason}
+    case get(endpoint) do
+      {:ok, %{body: body}} when is_binary(body) -> {:ok, body}
+      {:ok, %{body: body}} when is_map(body) -> {:ok, JSON.encode!(body)}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   @doc """
-  Get detailed server info including version and uptime
+  Get detailed server info.
   """
-  @spec server_info() :: {:ok, map()} | {:error, binary()}
+  @spec server_info() :: result(map() | binary())
   def server_info do
-    start_time = System.monotonic_time()
-
-    case request_module().get("/") do
-      {:ok, %{status: 200}, body} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:server_info, %{duration: duration, status: 200}, %{
-          method: :get
-        })
-
-        {:ok, body}
-
-      {:ok, %{status: status}, _} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:server_info, %{duration: duration, status: status}, %{
-          method: :get
-        })
-
-        {:error, "Server returned status #{status}"}
-
-      {:error, reason} ->
-        duration = System.monotonic_time() - start_time
-
-        Caddy.Telemetry.emit_api_event(:server_info_error, %{duration: duration}, %{error: reason})
-
-        {:error, "Connection failed: #{inspect(reason)}"}
+    case get("/") do
+      {:ok, %{body: body}} -> {:ok, body}
+      {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Get current reverse-proxy upstream status.
+  """
+  @spec get_upstreams() :: result(term())
+  def get_upstreams, do: get_body("/reverse_proxy/upstreams")
+
+  @doc """
+  Get information about a PKI CA.
+  """
+  @spec get_pki_ca(binary()) :: result(term())
+  def get_pki_ca(ca_id) when is_binary(ca_id), do: get_body("/pki/ca/#{ca_id}")
+
+  @doc """
+  Get the certificate chain for a PKI CA.
+  """
+  @spec get_pki_certificates(binary()) :: result(term())
+  def get_pki_certificates(ca_id) when is_binary(ca_id) do
+    get_body("/pki/ca/#{ca_id}/certificates")
+  end
+
+  @doc """
+  Get config by Caddy `@id`.
+  """
+  @spec get_by_id(binary()) :: result(term())
+  def get_by_id(id) when is_binary(id), do: get_body("/id/#{id}")
+
+  @doc """
+  Patch config by Caddy `@id`.
+  """
+  @spec patch_by_id(binary(), map(), keyword()) :: result(term())
+  def patch_by_id(id, data, opts \\ []) when is_binary(id) and is_map(data) do
+    data_string = JSON.encode!(data)
+
+    with {:ok, response} <-
+           request(
+             :patch,
+             "/id/#{id}",
+             data_string,
+             "application/json",
+             :patch_id,
+             %{
+               id: id,
+               payload_size: byte_size(data_string)
+             },
+             headers: headers_from_opts(opts)
+           ) do
+      {:ok, response.body}
+    end
+  end
+
+  @doc """
+  Delete config by Caddy `@id`.
+  """
+  @spec delete_by_id(binary(), keyword()) :: result(term())
+  def delete_by_id(id, opts \\ []) when is_binary(id) do
+    with {:ok, response} <-
+           request(:delete, "/id/#{id}", "", "application/json", :delete_id, %{id: id},
+             headers: headers_from_opts(opts)
+           ) do
+      {:ok, response.body}
+    end
+  end
+
+  defp get_config_path("/"), do: get_config_path("/config/")
+
+  defp get_config_path(path) do
+    with {:ok, response} <- request(:get, path, nil, nil, :get_config, %{path: path}) do
+      {:ok, response.body}
+    end
+  end
+
+  defp get_config_with_etag_path(path) do
+    with {:ok, response} <- request(:get, path, nil, nil, :get_config, %{path: path}) do
+      {:ok, %{config: response.body, etag: response_etag(response)}}
+    end
+  end
+
+  defp get_body(path) do
+    with {:ok, response} <- get(path) do
+      {:ok, response.body}
+    end
+  end
+
+  defp post_config_path(path, data, opts) do
+    config_request(:post, config_path(path), data, opts, :post_config)
+  end
+
+  defp put_config_path(path, data, opts) do
+    config_request(:put, config_path(path), data, opts, :put_config)
+  end
+
+  defp patch_config_path(path, data, opts) do
+    config_request(:patch, config_path(path), data, opts, :patch_config)
+  end
+
+  defp delete_config_path(path, opts) do
+    with {:ok, response} <-
+           request(
+             :delete,
+             config_path(path),
+             "",
+             "application/json",
+             :delete_config,
+             %{path: path},
+             headers: headers_from_opts(opts)
+           ) do
+      {:ok, response.body}
+    end
+  end
+
+  defp config_request(method, path, data, opts, event) do
+    data_string = JSON.encode!(data)
+
+    with {:ok, response} <-
+           request(
+             method,
+             path,
+             data_string,
+             "application/json",
+             event,
+             %{
+               path: path,
+               payload_size: byte_size(data_string)
+             },
+             headers: headers_from_opts(opts)
+           ) do
+      {:ok, response.body}
+    end
+  end
+
+  defp config_path("/"), do: "/config/"
+  defp config_path(path) when is_binary(path), do: "/config/#{path}"
+
+  defp request(method, path, data, content_type, event, metadata, opts \\ []) do
+    start_time = System.monotonic_time()
+    headers = Keyword.get(opts, :headers, [])
+
+    result =
+      case dispatch_request(method, path, data, content_type, headers) do
+        {:ok, resp, body} when resp.status in 200..299 ->
+          {:ok, %{resp | body: body}}
+
+        {:ok, resp, body} ->
+          {:error, {:http_error, resp.status, body}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+
+    duration = System.monotonic_time() - start_time
+    emit_request_event(event, result, duration, metadata)
+    result
+  end
+
+  defp dispatch_request(:get, path, _data, _content_type, []), do: request_module().get(path)
+
+  defp dispatch_request(:get, path, _data, _content_type, headers),
+    do: request_module().get(path, headers)
+
+  defp dispatch_request(:post, path, data, content_type, []),
+    do: request_module().post(path, data, content_type)
+
+  defp dispatch_request(:post, path, data, content_type, headers),
+    do: request_module().post(path, data, content_type, headers)
+
+  defp dispatch_request(:put, path, data, content_type, []),
+    do: request_module().put(path, data, content_type)
+
+  defp dispatch_request(:put, path, data, content_type, headers),
+    do: request_module().put(path, data, content_type, headers)
+
+  defp dispatch_request(:patch, path, data, content_type, []),
+    do: request_module().patch(path, data, content_type)
+
+  defp dispatch_request(:patch, path, data, content_type, headers),
+    do: request_module().patch(path, data, content_type, headers)
+
+  defp dispatch_request(:delete, path, data, content_type, []),
+    do: request_module().delete(path, data, content_type)
+
+  defp dispatch_request(:delete, path, data, content_type, headers),
+    do: request_module().delete(path, data, content_type, headers)
+
+  defp emit_request_event(event, {:ok, response}, duration, metadata) do
+    Caddy.Telemetry.emit_api_event(
+      event,
+      %{duration: duration, status: response.status},
+      metadata
+    )
+  end
+
+  defp emit_request_event(event, {:error, reason}, duration, metadata) do
+    Caddy.Telemetry.emit_api_event(
+      :"#{event}_error",
+      %{duration: duration},
+      Map.put(metadata, :error, reason)
+    )
+  end
+
+  defp headers_from_opts(opts) do
+    case Keyword.get(opts, :if_match) do
+      nil -> []
+      etag -> [{"If-Match", etag}]
+    end
+  end
+
+  defp response_etag(%{headers: headers}) do
+    Enum.find_value(headers, fn
+      {:Etag, value} -> value
+      {:ETag, value} -> value
+      {"Etag", value} -> value
+      {"ETag", value} -> value
+      {"etag", value} -> value
+      _ -> nil
+    end)
   end
 end

@@ -2,9 +2,9 @@ defmodule Caddy.ConfigManagerTest do
   use ExUnit.Case, async: false
   import Mox
 
+  alias Caddy.Admin.Request
   alias Caddy.ConfigManager
   alias Caddy.ConfigProvider
-  alias Caddy.Admin.Request
 
   setup :verify_on_exit!
   setup :set_mox_global
@@ -73,7 +73,7 @@ defmodule Caddy.ConfigManagerTest do
         {:error, :econnrefused}
       end)
 
-      assert {:error, :caddy_not_available} = ConfigManager.get_runtime_config()
+      assert {:error, :econnrefused} = ConfigManager.get_runtime_config()
     end
   end
 
@@ -195,7 +195,7 @@ defmodule Caddy.ConfigManagerTest do
         {:error, :econnrefused}
       end)
 
-      assert {:error, :patch_failed} =
+      assert {:error, :econnrefused} =
                ConfigManager.apply_runtime_config("apps/http/servers/srv0", config)
     end
   end

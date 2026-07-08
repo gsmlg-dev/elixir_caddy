@@ -4,6 +4,16 @@ defmodule Caddy.Server.EmbeddedTest do
   alias Caddy.Config
   alias Caddy.Server.Embedded
 
+  test "records port exit status without stopping the GenServer" do
+    port = make_ref()
+    state = %{port: port, dump_log: false, caddy_status: :running, last_exit_status: nil}
+
+    assert {:noreply, new_state} = Embedded.handle_info({port, {:exit_status, 1}}, state)
+    assert new_state.port == nil
+    assert new_state.caddy_status == {:error, 1}
+    assert new_state.last_exit_status == 1
+  end
+
   @tag :tmp_dir
   test "terminates the port process with SIGTERM before falling back to SIGKILL", %{
     tmp_dir: tmp_dir

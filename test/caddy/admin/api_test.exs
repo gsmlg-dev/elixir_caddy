@@ -1,6 +1,8 @@
 defmodule Caddy.Admin.ApiTest do
   use ExUnit.Case, async: true
+
   import Mox
+
   alias Caddy.Admin.Api
   alias Caddy.Admin.Request
 
@@ -11,472 +13,184 @@ defmodule Caddy.Admin.ApiTest do
     :ok
   end
 
-  # ============================================================================
-  # get/1
-  # ============================================================================
-
-  describe "get/1" do
-    test "returns the response body on success" do
-      path = "some/path"
-      expected_resp = %Request{status: 200, body: "body"}
-
-      expect(Caddy.Admin.RequestMock, :get, 1, fn ^path ->
-        {:ok, expected_resp, "body"}
+  describe "request contract" do
+    test "get/1 returns tagged response on success" do
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/some/path" ->
+        {:ok, %Request{status: 200}, "body"}
       end)
 
-      assert %{body: "body", status: 200} = Api.get(path)
+      assert {:ok, %Request{body: "body", status: 200}} = Api.get("/some/path")
     end
 
-    test "returns zero status on connection error" do
+    test "get/1 returns tagged transport errors" do
       expect(Caddy.Admin.RequestMock, :get, 1, fn "/failing/path" ->
         {:error, :econnrefused}
       end)
 
-      assert %{status: 0, body: nil} = Api.get("/failing/path")
+      assert {:error, :econnrefused} = Api.get("/failing/path")
     end
 
-    test "returns zero status on timeout" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/timeout/path" ->
-        {:error, :timeout}
+    test "get/1 returns tagged HTTP errors" do
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/missing" ->
+        {:ok, %Request{status: 404}, %{"error" => "not found"}}
       end)
 
-      assert %{status: 0, body: nil} = Api.get("/timeout/path")
+      assert {:error, {:http_error, 404, %{"error" => "not found"}}} = Api.get("/missing")
     end
   end
-
-  # ============================================================================
-  # load/1
-  # ============================================================================
 
   describe "load/1" do
     test "loads binary config" do
       config = "{}"
-      expected_resp = %Request{status: 200, body: "body"}
 
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", ^config, "application/json" ->
-        {:ok, expected_resp, "body"}
+        {:ok, %Request{status: 200}, "body"}
       end)
 
-      assert %{body: "body", status: 200} = Api.load(config)
+      assert {:ok, %Request{body: "body", status: 200}} = Api.load(config)
     end
 
-    test "loads map config by merging with current" do
+    test "loads map config directly without fetching or merging runtime config" do
       config = %{"foo" => "bar"}
-      expected_resp = %Request{status: 200, body: "body"}
-
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{}, %{}}
-      end)
-
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _, "application/json" ->
-        {:ok, expected_resp, "body"}
-      end)
-
-      assert %{body: "body", status: 200} = Api.load(config)
-    end
-
-    test "returns zero status on error" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _, "application/json" ->
-        {:error, :econnrefused}
-      end)
-
-      assert %{status: 0, body: nil} = Api.load("{}")
-    end
-
-    test "handles invalid config response" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _, "application/json" ->
-        {:ok, %Request{status: 400, body: "invalid config"}, "invalid config"}
-      end)
-
-      result = Api.load("{invalid}")
-      assert result.status == 400
-    end
-
-    test "loads map config directly when runtime config is unavailable" do
-      config = %{"foo" => "bar"}
-      expected_resp = %Request{status: 200, body: "body"}
-
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:error, :econnrefused}
-      end)
 
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", body, "application/json" ->
         assert JSON.decode!(body) == config
-        {:ok, expected_resp, "body"}
+        {:ok, %Request{status: 200}, "body"}
       end)
 
-      assert %{status: 200, body: "body"} = Api.load(config)
+      assert {:ok, %Request{status: 200, body: "body"}} = Api.load(config)
+    end
+
+    test "returns HTTP error tuple for invalid config" do
+      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _, "application/json" ->
+        {:ok, %Request{status: 400}, "invalid config"}
+      end)
+
+      assert {:error, {:http_error, 400, "invalid config"}} = Api.load("{invalid}")
     end
   end
 
-  # ============================================================================
-  # stop/0
-  # ============================================================================
+  describe "config endpoints" do
+    test "get_config/0 returns full config" do
+      config = %{"admin" => %{}, "apps" => %{}}
 
-  describe "stop/0" do
-    test "stops the server successfully" do
-      expected_resp = %Request{status: 200, body: "body"}
-
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/stop", "", "application/json" ->
-        {:ok, expected_resp, "body"}
-      end)
-
-      assert %{body: "body", status: 200} = Api.stop()
-    end
-
-    test "returns zero status on error" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/stop", "", "application/json" ->
-        {:error, :econnrefused}
-      end)
-
-      assert %{status: 0, body: nil} = Api.stop()
-    end
-  end
-
-  # ============================================================================
-  # get_config/0 and get_config/1
-  # ============================================================================
-
-  describe "get_config/0" do
-    test "returns full config" do
       expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{}, %{"admin" => %{}, "apps" => %{}}}
+        {:ok, %Request{status: 200}, config}
       end)
 
-      assert %{"admin" => %{}, "apps" => %{}} = Api.get_config()
+      assert {:ok, ^config} = Api.get_config()
     end
 
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:error, :econnrefused}
-      end)
+    test "get_config/1 returns config at path" do
+      config = %{"servers" => %{}}
 
-      assert nil == Api.get_config()
-    end
-  end
-
-  describe "get_config/1" do
-    test "returns config at path" do
       expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/apps/http" ->
-        {:ok, %Request{}, %{"servers" => %{}}}
+        {:ok, %Request{status: 200}, config}
       end)
 
-      assert %{"servers" => %{}} = Api.get_config("apps/http")
+      assert {:ok, ^config} = Api.get_config("apps/http")
     end
 
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/nonexistent" ->
-        {:error, :not_found}
+    test "get_config_with_etag/1 returns body and ETag" do
+      config = %{"servers" => %{}}
+
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/apps/http" ->
+        {:ok, %Request{status: 200, headers: [{:ETag, "abc"}]}, config}
       end)
 
-      assert nil == Api.get_config("nonexistent")
-    end
-  end
-
-  # ============================================================================
-  # post_config/1 and post_config/2
-  # ============================================================================
-
-  describe "post_config/1" do
-    test "posts config to root path" do
-      data = %{"admin" => %{"listen" => ":2019"}}
-
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/config/", body, "application/json" ->
-        assert JSON.decode!(body) == data
-        {:ok, %Request{status: 200}, data}
-      end)
-
-      assert ^data = Api.post_config(data)
+      assert {:ok, %{config: ^config, etag: "abc"}} = Api.get_config_with_etag("apps/http")
     end
 
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/config/", _, "application/json" ->
-        {:error, :econnrefused}
-      end)
-
-      assert nil == Api.post_config(%{"foo" => "bar"})
-    end
-  end
-
-  describe "post_config/2" do
-    test "posts config to specific path" do
-      path = "apps/http/servers"
-      data = %{"srv0" => %{"listen" => [":443"]}}
-
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/config/apps/http/servers", _, _ ->
-        {:ok, %Request{}, data}
-      end)
-
-      assert ^data = Api.post_config(path, data)
-    end
-
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/config/some/path", _, _ ->
-        {:error, :timeout}
-      end)
-
-      assert nil == Api.post_config("some/path", %{})
-    end
-  end
-
-  # ============================================================================
-  # put_config/1 and put_config/2
-  # ============================================================================
-
-  describe "put_config/1" do
-    test "puts config to root path" do
-      data = %{"admin" => %{"listen" => ":2019"}}
-
-      expect(Caddy.Admin.RequestMock, :put, 1, fn "/config/", body, "application/json" ->
-        assert JSON.decode!(body) == data
-        {:ok, %Request{status: 200}, data}
-      end)
-
-      assert ^data = Api.put_config(data)
-    end
-
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :put, 1, fn "/config/", _, "application/json" ->
-        {:error, :econnrefused}
-      end)
-
-      assert nil == Api.put_config(%{"foo" => "bar"})
-    end
-  end
-
-  describe "put_config/2" do
-    test "puts config to specific path" do
-      path = "apps/http/servers/srv0"
+    test "post, put, patch and delete config return body on success" do
       data = %{"listen" => [":8080"]}
 
-      expect(Caddy.Admin.RequestMock, :put, 1, fn "/config/apps/http/servers/srv0", _, _ ->
-        {:ok, %Request{}, data}
-      end)
-
-      assert ^data = Api.put_config(path, data)
-    end
-
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :put, 1, fn "/config/some/path", _, _ ->
-        {:error, :timeout}
-      end)
-
-      assert nil == Api.put_config("some/path", %{})
-    end
-  end
-
-  # ============================================================================
-  # patch_config/1 and patch_config/2
-  # ============================================================================
-
-  describe "patch_config/1" do
-    test "patches config at root path" do
-      data = %{"admin" => %{"listen" => ":2020"}}
-
-      expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/", body, "application/json" ->
+      expect(Caddy.Admin.RequestMock, :post, 1, fn "/config/apps/http/servers",
+                                                   body,
+                                                   "application/json" ->
         assert JSON.decode!(body) == data
         {:ok, %Request{status: 200}, data}
       end)
 
-      assert ^data = Api.patch_config(data)
-    end
-
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/", _, "application/json" ->
-        {:error, :econnrefused}
+      expect(Caddy.Admin.RequestMock, :put, 1, fn "/config/apps/http/servers/srv0",
+                                                  body,
+                                                  "application/json" ->
+        assert JSON.decode!(body) == data
+        {:ok, %Request{status: 200}, data}
       end)
 
-      assert nil == Api.patch_config(%{"foo" => "bar"})
-    end
-  end
-
-  describe "patch_config/2" do
-    test "patches config at specific path" do
-      path = "apps/http/servers/srv0"
-      data = %{"listen" => [":9000"]}
-
-      expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/apps/http/servers/srv0", _, _ ->
-        {:ok, %Request{}, data}
+      expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/apps/http/servers/srv0",
+                                                    body,
+                                                    "application/json" ->
+        assert JSON.decode!(body) == data
+        {:ok, %Request{status: 200}, data}
       end)
 
-      assert ^data = Api.patch_config(path, data)
-    end
-
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/some/path", _, _ ->
-        {:error, :timeout}
-      end)
-
-      assert nil == Api.patch_config("some/path", %{})
-    end
-  end
-
-  # ============================================================================
-  # delete_config/0 and delete_config/1
-  # ============================================================================
-
-  describe "delete_config/0" do
-    test "deletes entire config" do
-      expect(Caddy.Admin.RequestMock, :delete, 1, fn "/config/", "", "application/json" ->
-        {:ok, %Request{status: 200}, %{}}
-      end)
-
-      assert %{} = Api.delete_config()
-    end
-
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :delete, 1, fn "/config/", "", "application/json" ->
-        {:error, :econnrefused}
-      end)
-
-      assert nil == Api.delete_config()
-    end
-  end
-
-  describe "delete_config/1" do
-    test "deletes config at specific path" do
-      expect(Caddy.Admin.RequestMock, :delete, 1, fn "/config/apps/http",
+      expect(Caddy.Admin.RequestMock, :delete, 1, fn "/config/apps/http/servers/srv0",
                                                      "",
                                                      "application/json" ->
         {:ok, %Request{status: 200}, %{}}
       end)
 
-      assert %{} = Api.delete_config("apps/http")
+      assert {:ok, ^data} = Api.post_config("apps/http/servers", data)
+      assert {:ok, ^data} = Api.put_config("apps/http/servers/srv0", data)
+      assert {:ok, ^data} = Api.patch_config("apps/http/servers/srv0", data)
+      assert {:ok, %{}} = Api.delete_config("apps/http/servers/srv0")
     end
 
-    test "returns nil on error" do
-      expect(Caddy.Admin.RequestMock, :delete, 1, fn "/config/some/path",
-                                                     "",
-                                                     "application/json" ->
-        {:error, :not_found}
+    test "If-Match option is sent on mutation requests" do
+      data = %{"listen" => [":8080"]}
+
+      expect(Caddy.Admin.RequestMock, :patch, 1, fn "/config/apps/http/servers/srv0",
+                                                    body,
+                                                    "application/json",
+                                                    [{"If-Match", "abc"}] ->
+        assert JSON.decode!(body) == data
+        {:ok, %Request{status: 200}, data}
       end)
 
-      assert nil == Api.delete_config("some/path")
+      assert {:ok, ^data} = Api.patch_config("apps/http/servers/srv0", data, if_match: "abc")
     end
   end
-
-  # ============================================================================
-  # adapt/1
-  # ============================================================================
 
   describe "adapt/1" do
     test "adapts caddyfile to JSON config" do
       caddyfile = "localhost:8080 { respond \"Hello\" }"
+      json = %{"apps" => %{"http" => %{}}}
 
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/adapt", ^caddyfile, "application/json" ->
-        {:ok, %Request{status: 200}, %{"apps" => %{"http" => %{}}}}
+        {:ok, %Request{status: 200}, json}
       end)
 
-      assert %{"apps" => %{"http" => %{}}} = Api.adapt(caddyfile)
+      assert {:ok, ^json} = Api.adapt(caddyfile)
     end
 
-    test "returns empty map on error" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/adapt", _, "application/json" ->
-        {:error, :econnrefused}
-      end)
-
-      assert %{} = Api.adapt("invalid")
-    end
-
-    test "handles syntax errors in caddyfile" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/adapt", _, "application/json" ->
-        {:ok, %Request{status: 400}, %{"error" => "syntax error"}}
-      end)
-
-      assert %{"error" => "syntax error"} = Api.adapt("{ invalid syntax")
-    end
-
-    # T022: transport error (socket closed) returns empty map without exception
-    test "returns empty map on socket closed transport error" do
+    test "returns tagged transport error" do
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/adapt", _, "application/json" ->
         {:error, :closed}
       end)
 
-      assert %{} = Api.adapt("some caddyfile content")
+      assert {:error, :closed} = Api.adapt("some caddyfile content")
     end
   end
 
-  # ============================================================================
-  # Error handling (T021: transport error propagation)
-  # ============================================================================
+  describe "operational endpoints" do
+    test "health_check/0 uses root endpoint" do
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
+        {:ok, %Request{status: 200}, ""}
+      end)
 
-  describe "transport error propagation" do
-    # T021: Verify that transport-level errors propagate as structured results (not exceptions)
-    # These tests use the mock to simulate transport failures at the request boundary.
+      assert {:ok, %{status: :healthy}} = Api.health_check()
+    end
 
-    test "get/1 returns structured error on transport failure without exception" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn _ ->
+    test "health_check/0 classifies connection errors" do
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
         {:error, :timeout}
       end)
 
-      result = Api.get("/any/path")
-      assert result.status == 0
-      assert result.body == nil
+      assert {:error, {:connection_failed, :timeout}} = Api.health_check()
     end
 
-    test "load/1 returns structured error on transport failure without exception" do
-      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _, "application/json" ->
-        {:error, :closed}
-      end)
-
-      result = Api.load("{}")
-      assert result.status == 0
-      assert result.body == nil
-    end
-  end
-
-  # ============================================================================
-  # health_check/0
-  # ============================================================================
-
-  describe "health_check/0" do
-    test "returns healthy status with loaded config" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 200}, %{"apps" => %{"http" => %{}}}}
-      end)
-
-      assert {:ok, %{status: :healthy, config_loaded: true}} = Api.health_check()
-    end
-
-    test "returns healthy status with empty config" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 200}, %{}}
-      end)
-
-      assert {:ok, %{status: :healthy, config_loaded: false}} = Api.health_check()
-    end
-
-    test "returns error for non-200 status" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 500}, nil}
-      end)
-
-      assert {:error, "Server returned status 500"} = Api.health_check()
-    end
-
-    test "returns error for connection failure" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:error, :econnrefused}
-      end)
-
-      assert {:error, "Connection failed: :econnrefused"} = Api.health_check()
-    end
-
-    test "returns error for timeout" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:error, :timeout}
-      end)
-
-      assert {:error, "Connection failed: :timeout"} = Api.health_check()
-    end
-  end
-
-  # ============================================================================
-  # server_info/0
-  # ============================================================================
-
-  describe "server_info/0" do
-    test "returns server details" do
+    test "server_info/0 returns root body" do
       expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
         {:ok, %Request{status: 200}, %{"version" => "2.7.6"}}
       end)
@@ -484,28 +198,31 @@ defmodule Caddy.Admin.ApiTest do
       assert {:ok, %{"version" => "2.7.6"}} = Api.server_info()
     end
 
-    test "returns error for non-200 status" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
-        {:ok, %Request{status: 503}, nil}
+    test "documented endpoints return response bodies" do
+      upstreams = [%{"address" => "localhost:3000", "healthy" => true}]
+      ca_info = %{"id" => "local"}
+      certs = [%{"not_after" => "2099-01-01T00:00:00Z"}]
+
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/reverse_proxy/upstreams" ->
+        {:ok, %Request{status: 200}, upstreams}
       end)
 
-      assert {:error, "Server returned status 503"} = Api.server_info()
-    end
-
-    test "handles connection errors" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
-        {:error, :timeout}
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/pki/ca/local" ->
+        {:ok, %Request{status: 200}, ca_info}
       end)
 
-      assert {:error, "Connection failed: :timeout"} = Api.server_info()
-    end
-
-    test "handles connection refused" do
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/" ->
-        {:error, :econnrefused}
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/pki/ca/local/certificates" ->
+        {:ok, %Request{status: 200}, certs}
       end)
 
-      assert {:error, "Connection failed: :econnrefused"} = Api.server_info()
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/id/route-1" ->
+        {:ok, %Request{status: 200}, %{"@id" => "route-1"}}
+      end)
+
+      assert {:ok, ^upstreams} = Api.get_upstreams()
+      assert {:ok, ^ca_info} = Api.get_pki_ca("local")
+      assert {:ok, ^certs} = Api.get_pki_certificates("local")
+      assert {:ok, %{"@id" => "route-1"}} = Api.get_by_id("route-1")
     end
   end
 end

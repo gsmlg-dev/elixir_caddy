@@ -67,10 +67,6 @@ defmodule Caddy.Server.ExternalTest do
         {:ok, %Request{status: 200}, %{"apps" => %{"http" => %{}}}}
       end)
 
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 200}, %{}}
-      end)
-
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _body, "application/json" ->
         {:ok, %Request{status: 200}, ""}
       end)
@@ -93,15 +89,11 @@ defmodule Caddy.Server.ExternalTest do
         {:ok, %Request{status: 200}, %{"apps" => %{}}}
       end)
 
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 200}, %{}}
-      end)
-
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _body, "application/json" ->
         {:ok, %Request{status: 400}, "bad config"}
       end)
 
-      assert {:error, {:load_failed, 400}} = External.push_config()
+      assert {:error, {:http_error, 400, "bad config"}} = External.push_config()
     end
 
     # T011
@@ -110,15 +102,11 @@ defmodule Caddy.Server.ExternalTest do
         {:ok, %Request{status: 200}, %{"apps" => %{}}}
       end)
 
-      expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
-        {:ok, %Request{status: 200}, %{}}
-      end)
-
       expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", _body, "application/json" ->
         {:error, :econnrefused}
       end)
 
-      assert {:error, :load_connection_failed} = External.push_config()
+      assert {:error, :econnrefused} = External.push_config()
     end
   end
 
@@ -146,6 +134,18 @@ defmodule Caddy.Server.ExternalTest do
       Application.put_env(:caddy, :commands, start: "")
 
       assert {:error, :empty_command} = External.execute_command(:start)
+    end
+
+    test "executes quoted shell command strings through the shell" do
+      Application.put_env(:caddy, :commands, status: ~s(printf "%s" "hello world"))
+
+      assert {:ok, "hello world"} = External.execute_command(:status)
+    end
+
+    test "executes tuple command without shell parsing" do
+      Application.put_env(:caddy, :commands, status: {"printf", ["%s", "tuple command"]})
+
+      assert {:ok, "tuple command"} = External.execute_command(:status)
     end
   end
 
@@ -207,7 +207,7 @@ defmodule Caddy.Server.ExternalTest do
       :sys.replace_state(ConfigManager, &%{&1 | application_state: :synced})
       :sys.replace_state(External, &%{&1 | caddy_status: :running, config_pushed: true})
 
-      stub(Caddy.Admin.RequestMock, :get, fn "/config/" ->
+      stub(Caddy.Admin.RequestMock, :get, fn "/" ->
         {:error, :econnrefused}
       end)
 
@@ -220,7 +220,7 @@ defmodule Caddy.Server.ExternalTest do
       :sys.replace_state(ConfigManager, &%{&1 | application_state: :degraded})
       :sys.replace_state(External, &%{&1 | caddy_status: :stopped, config_pushed: true})
 
-      stub(Caddy.Admin.RequestMock, :get, fn "/config/" ->
+      stub(Caddy.Admin.RequestMock, :get, fn "/" ->
         {:ok, %Request{status: 200}, %{}}
       end)
 

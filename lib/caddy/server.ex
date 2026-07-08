@@ -28,7 +28,7 @@ defmodule Caddy.Server do
         start: "systemctl start caddy",
         stop: "systemctl stop caddy",
         restart: "systemctl restart caddy",
-        status: "systemctl is-active caddy"
+        status: {"systemctl", ["is-active", "caddy"]}
       ]
 
       # Embedded mode
@@ -37,6 +37,8 @@ defmodule Caddy.Server do
   """
 
   alias Caddy.Config
+  alias Caddy.Server.Embedded
+  alias Caddy.Server.External
 
   @doc """
   Returns a child specification for the supervisor.
@@ -66,8 +68,8 @@ defmodule Caddy.Server do
   @spec impl_module() :: module()
   def impl_module do
     case Config.mode() do
-      :embedded -> Caddy.Server.Embedded
-      :external -> Caddy.Server.External
+      :embedded -> Embedded
+      :external -> External
     end
   end
 
@@ -80,8 +82,8 @@ defmodule Caddy.Server do
   @spec get_caddyfile() :: binary()
   def get_caddyfile do
     case Config.mode() do
-      :embedded -> Caddy.Server.Embedded.get_caddyfile()
-      :external -> Caddy.Server.External.get_caddyfile()
+      :embedded -> Embedded.get_caddyfile()
+      :external -> External.get_caddyfile()
     end
   end
 
@@ -91,13 +93,15 @@ defmodule Caddy.Server do
   Returns:
   - `:running` - Caddy is running and responding
   - `:stopped` - Caddy is not running
+  - `:unreachable` - Caddy may be running but cannot be reached over the Admin API
   - `:unknown` - Status cannot be determined
+  - `{:error, reason}` - Embedded process exited or failed to start
   """
-  @spec check_status() :: :running | :stopped | :unknown
+  @spec check_status() :: :running | :stopped | :unreachable | :unknown | {:error, term()}
   def check_status do
     case Config.mode() do
-      :embedded -> check_embedded_status()
-      :external -> Caddy.Server.External.check_status()
+      :embedded -> Embedded.check_status()
+      :external -> External.check_status()
     end
   end
 
@@ -112,15 +116,18 @@ defmodule Caddy.Server do
   def execute_command(command) do
     case Config.mode() do
       :embedded -> {:error, :embedded_mode}
-      :external -> Caddy.Server.External.execute_command(command)
+      :external -> External.execute_command(command)
     end
   end
 
-  # Check embedded status by verifying the process is alive
-  defp check_embedded_status do
-    case Process.whereis(Caddy.Server.Embedded) do
-      nil -> :stopped
-      _pid -> :running
+  @doc """
+  Return Caddy version information for the configured binary.
+  """
+  @spec version() :: {:ok, map()} | {:error, term()}
+  def version do
+    case Config.mode() do
+      :embedded -> Embedded.version()
+      :external -> Config.version_info()
     end
   end
 end

@@ -2,8 +2,8 @@ defmodule Caddy.Admin.ResourcesTest do
   use ExUnit.Case, async: true
   import Mox
 
-  alias Caddy.Admin.Resources
   alias Caddy.Admin.Request
+  alias Caddy.Admin.Resources
 
   setup :verify_on_exit!
 
@@ -326,7 +326,7 @@ defmodule Caddy.Admin.ResourcesTest do
         {:error, :econnrefused}
       end)
 
-      assert {:error, :connection_failed} = Resources.get_upstreams()
+      assert {:error, :econnrefused} = Resources.get_upstreams()
     end
   end
 
@@ -355,6 +355,18 @@ defmodule Caddy.Admin.ResourcesTest do
       end)
 
       assert {:ok, ^certs} = Resources.get_pki_certificates("local")
+    end
+  end
+
+  describe "certificates/1" do
+    test "normalizes certificates and emits expiry telemetry" do
+      certs = [%{"not_after" => "2099-01-01T00:00:00Z", "subject" => "example.test"}]
+
+      expect(Caddy.Admin.RequestMock, :get, 1, fn "/pki/ca/local/certificates" ->
+        {:ok, %Request{status: 200}, %{"certificates" => certs}}
+      end)
+
+      assert {:ok, ^certs} = Resources.certificates("local")
     end
   end
 end
