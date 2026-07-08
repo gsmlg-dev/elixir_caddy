@@ -18,8 +18,6 @@ defmodule Caddy.Logger.Store do
       Metadata: `%{requested: integer(), available: integer()}`
   """
 
-  require Logger
-
   @keep_lines 50_000
 
   use GenServer

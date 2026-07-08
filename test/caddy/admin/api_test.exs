@@ -92,13 +92,20 @@ defmodule Caddy.Admin.ApiTest do
       assert result.status == 400
     end
 
-    # T018: nil runtime config guard (no exception raised)
-    test "returns zero status when runtime config is unavailable (nil guard)" do
+    test "loads map config directly when runtime config is unavailable" do
+      config = %{"foo" => "bar"}
+      expected_resp = %Request{status: 200, body: "body"}
+
       expect(Caddy.Admin.RequestMock, :get, 1, fn "/config/" ->
         {:error, :econnrefused}
       end)
 
-      assert %{status: 0, body: nil} = Api.load(%{"foo" => "bar"})
+      expect(Caddy.Admin.RequestMock, :post, 1, fn "/load", body, "application/json" ->
+        assert JSON.decode!(body) == config
+        {:ok, expected_resp, "body"}
+      end)
+
+      assert %{status: 200, body: "body"} = Api.load(config)
     end
   end
 

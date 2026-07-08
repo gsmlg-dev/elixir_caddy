@@ -211,7 +211,7 @@ defmodule Caddy do
   defdelegate sync_to_caddy, to: Caddy.ConfigManager
   defdelegate sync_to_caddy(opts), to: Caddy.ConfigManager
 
-  @doc"""
+  @doc """
   Check if in-memory and runtime configs are in sync.
 
   Returns `{:ok, :in_sync}` if configs match, or `{:ok, {:drift_detected, diff}}`

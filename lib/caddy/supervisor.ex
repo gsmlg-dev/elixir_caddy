@@ -38,16 +38,26 @@ defmodule Caddy.Supervisor do
            {Supervisor.sup_flags(),
             [Supervisor.child_spec() | (old_erlang_child_spec :: :supervisor.child_spec())]}}
   def init(args) do
-    children = [
-      {Caddy.ConfigProvider, [args]},
-      {Caddy.ConfigManager, [args]},
-      Caddy.Logger,
-      Caddy.Server
-    ]
+    children =
+      [
+        {Caddy.ConfigProvider, [args]},
+        {Caddy.ConfigManager, [args]},
+        Caddy.Logger,
+        Caddy.Server
+      ]
+      |> maybe_add_metrics_poller()
 
     opts = [strategy: :rest_for_one, name: __MODULE__]
 
     Supervisor.init(children, opts)
+  end
+
+  defp maybe_add_metrics_poller(children) do
+    if Caddy.Metrics.metrics_enabled?() do
+      children ++ [{Caddy.Metrics.Poller, interval: Caddy.Metrics.metrics_interval()}]
+    else
+      children
+    end
   end
 
   @doc """

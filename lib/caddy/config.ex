@@ -536,8 +536,6 @@ defmodule Caddy.Config do
     end)
   end
 
-  defp valid_additionals?(_), do: false
-
   defp valid_sites?(sites) when is_list(sites) do
     Enum.all?(sites, fn
       %{address: address, config: config}
@@ -548,8 +546,6 @@ defmodule Caddy.Config do
         false
     end)
   end
-
-  defp valid_sites?(_), do: false
 
   @doc false
   def parse_caddyfile(caddy_bin, caddy_file) do

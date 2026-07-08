@@ -27,8 +27,6 @@ defmodule Caddy.Logger do
       end, %{})
   """
 
-  require Logger
-
   use Supervisor
 
   @doc false

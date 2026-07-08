@@ -33,8 +33,9 @@ defmodule Caddy.Server.External do
 
   use GenServer
 
-  alias Caddy.Config
   alias Caddy.Admin.Api
+  alias Caddy.Config
+  alias Caddy.ConfigManager
 
   @type state :: %{
           caddy_status: :running | :stopped | :unknown,
@@ -66,7 +67,8 @@ defmodule Caddy.Server.External do
   Available commands: `:start`, `:stop`, `:restart`, `:status`
   """
   @spec execute_command(atom()) :: {:ok, binary()} | {:error, term()}
-  def execute_command(command) when command in [:start, :stop, :restart, :status, :health_check] do
+  def execute_command(command)
+      when command in [:start, :stop, :restart, :status, :health_check] do
     GenServer.call(__MODULE__, {:execute_command, command})
   end
 
@@ -296,9 +298,6 @@ defmodule Caddy.Server.External do
         {:ok, %{status: :healthy}} ->
           :running
 
-        {:ok, _} ->
-          :running
-
         {:error, "Connection failed: " <> reason} ->
           # Check if it's a connection refused error
           if String.contains?(reason, "econnrefused") do
@@ -317,6 +316,8 @@ defmodule Caddy.Server.External do
       status: new_status,
       previous_status: old_status
     })
+
+    report_config_manager_health(new_status)
 
     # Emit status change event if status changed
     if new_status != old_status do
@@ -340,6 +341,9 @@ defmodule Caddy.Server.External do
 
     {new_status, state}
   end
+
+  defp report_config_manager_health(:running), do: ConfigManager.report_health_status(:ok)
+  defp report_config_manager_health(_status), do: ConfigManager.report_health_status(:error)
 
   defp do_execute_command(command) do
     case Config.command(command) do

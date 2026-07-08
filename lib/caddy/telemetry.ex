@@ -6,8 +6,6 @@ defmodule Caddy.Telemetry do
   API operations, and performance monitoring.
   """
 
-  require Logger
-
   @doc """
   Emits a telemetry event for configuration changes.
   """
@@ -68,7 +66,7 @@ defmodule Caddy.Telemetry do
   ## Event Types
 
   - `:sync_to_caddy` - When syncing in-memory config to running Caddy
-- `:drift_check` - When checking for config drift
+  - `:drift_check` - When checking for config drift
   - `:rollback` - When rolling back to previous config
   - `:apply` - When applying runtime config directly
   - `:validate` - When validating config

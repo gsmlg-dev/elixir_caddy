@@ -5,8 +5,6 @@ defmodule Caddy.Admin do
   This module runs as a background process that checks the Caddy server
   status every 15 seconds and logs any connection issues.
   """
-  require Logger
-
   use GenServer
 
   @check_interval 15_000
