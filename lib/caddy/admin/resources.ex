@@ -330,7 +330,6 @@ defmodule Caddy.Admin.Resources do
       %{status: status, body: body} when status in 200..299 -> {:ok, body}
       %{status: 0} -> {:error, :connection_failed}
       %{status: status} -> {:error, {:http_error, status}}
-      _ -> {:error, :connection_failed}
     end
   end
 
@@ -350,7 +349,6 @@ defmodule Caddy.Admin.Resources do
     case Api.get("/pki/ca/#{ca_id}") do
       %{status: status, body: body} when status in 200..299 -> {:ok, body}
       %{status: status} -> {:error, {:http_error, status}}
-      _ -> {:error, :connection_failed}
     end
   end
 
@@ -362,7 +360,6 @@ defmodule Caddy.Admin.Resources do
     case Api.get("/pki/ca/#{ca_id}/certificates") do
       %{status: status, body: body} when status in 200..299 -> {:ok, body}
       %{status: status} -> {:error, {:http_error, status}}
-      _ -> {:error, :connection_failed}
     end
   end
 end

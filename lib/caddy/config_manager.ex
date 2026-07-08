@@ -226,7 +226,7 @@ defmodule Caddy.ConfigManager do
     GenServer.call(__MODULE__, {:sync_to_caddy, opts})
   end
 
-  @doc"""
+  @doc """
   Check if in-memory and runtime configs are in sync.
 
   Returns `:in_sync` if configs match, or `{:drift_detected, diff}` with

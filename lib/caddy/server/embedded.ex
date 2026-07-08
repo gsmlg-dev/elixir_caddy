@@ -20,6 +20,9 @@ defmodule Caddy.Server.Embedded do
 
   use GenServer
 
+  @graceful_shutdown_timeout 5_000
+  @shutdown_check_interval 50
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -238,12 +241,12 @@ defmodule Caddy.Server.Embedded do
       pid = pidfile |> File.read!() |> String.trim()
 
       if Regex.match?(~r/\d+/, pid) do
-        Caddy.Telemetry.log_debug("Caddy pidfile exists: `kill -9 #{pid}`",
+        Caddy.Telemetry.log_debug("Caddy pidfile exists: terminating #{pid}",
           module: __MODULE__,
           pid: pid
         )
 
-        System.cmd("kill", ["-9", "#{pid}"])
+        terminate_pid(pid)
       end
 
       File.rm(pidfile)
@@ -258,8 +261,7 @@ defmodule Caddy.Server.Embedded do
 
     case port |> Port.info(:os_pid) do
       {:os_pid, pid} ->
-        {_, code} = System.cmd("kill", ["-9", "#{pid}"])
-        code
+        terminate_port(port, pid)
 
       _ ->
         0
@@ -320,5 +322,66 @@ defmodule Caddy.Server.Embedded do
       {k, v} -> {k |> to_charlist(), v |> to_charlist()}
     end)
     |> Enum.filter(&is_tuple/1)
+  end
+
+  defp terminate_port(port, pid) do
+    case kill(pid, "TERM") do
+      0 ->
+        wait_for_port_exit(port, @graceful_shutdown_timeout) || kill(pid, "KILL")
+
+      code ->
+        code
+    end
+  end
+
+  defp terminate_pid(pid) do
+    case kill(pid, "TERM") do
+      0 ->
+        wait_for_pid_exit(pid, @graceful_shutdown_timeout) || kill(pid, "KILL")
+
+      code ->
+        code
+    end
+  end
+
+  defp kill(pid, signal) do
+    {_output, code} = System.cmd("kill", ["-#{signal}", "#{pid}"], stderr_to_stdout: true)
+    code
+  end
+
+  defp wait_for_port_exit(port, timeout) when timeout <= 0 do
+    case Port.info(port) do
+      nil -> 0
+      _ -> false
+    end
+  end
+
+  defp wait_for_port_exit(port, timeout) do
+    case Port.info(port) do
+      nil ->
+        0
+
+      _ ->
+        Process.sleep(@shutdown_check_interval)
+        wait_for_port_exit(port, timeout - @shutdown_check_interval)
+    end
+  end
+
+  defp wait_for_pid_exit(pid, timeout) when timeout <= 0 do
+    if pid_running?(pid), do: false, else: 0
+  end
+
+  defp wait_for_pid_exit(pid, timeout) do
+    if pid_running?(pid) do
+      Process.sleep(@shutdown_check_interval)
+      wait_for_pid_exit(pid, timeout - @shutdown_check_interval)
+    else
+      0
+    end
+  end
+
+  defp pid_running?(pid) do
+    {_output, code} = System.cmd("kill", ["-0", "#{pid}"], stderr_to_stdout: true)
+    code == 0
   end
 end

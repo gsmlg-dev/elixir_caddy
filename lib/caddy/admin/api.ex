@@ -95,7 +95,9 @@ defmodule Caddy.Admin.Api do
         |> load()
 
       nil ->
-        %{status: 0, body: nil}
+        conf
+        |> JSON.encode!()
+        |> load()
     end
   end
 

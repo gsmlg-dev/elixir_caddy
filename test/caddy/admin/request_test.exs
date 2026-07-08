@@ -1,7 +1,17 @@
 defmodule Caddy.Admin.RequestTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Caddy.Admin.Request
+
+  setup do
+    original_admin_url = Application.get_env(:caddy, :admin_url)
+
+    on_exit(fn ->
+      restore_env(:admin_url, original_admin_url)
+    end)
+
+    :ok
+  end
 
   describe "HTTP request building" do
     test "generates correct GET request header" do
@@ -55,9 +65,9 @@ defmodule Caddy.Admin.RequestTest do
   describe "Content type handling" do
     test "response handles JSON content type" do
       headers = [{"Content-Type", "application/json"}]
-      response = %Request{status: 200, headers: headers, body: ~s({"key":"value"})}
+      response = %Request{status: 200, headers: headers, body: "{\"key\":\"value\"}"}
 
-      assert response.body == ~s({"key":"value"})
+      assert response.body == "{\"key\":\"value\"}"
       content_type = Enum.find(response.headers, fn {k, _v} -> k == "Content-Type" end)
       assert content_type == {"Content-Type", "application/json"}
     end
@@ -102,5 +112,56 @@ defmodule Caddy.Admin.RequestTest do
       # Actual connection testing would require a running Caddy instance
       assert is_atom(Request)
     end
+
+    test "returns an error when the socket closes before a response" do
+      with_raw_http_server(:close, fn ->
+        assert {:error, :closed} = Request.get("/")
+      end)
+    end
+
+    test "handles HTTP/1.0 responses without crashing" do
+      response = "HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+
+      with_raw_http_server({:send, response}, fn ->
+        assert {:ok, %Request{status: 200}, "OK"} = Request.get("/")
+      end)
+    end
   end
+
+  defp with_raw_http_server(response, fun) do
+    {:ok, listener} =
+      :gen_tcp.listen(0, [
+        :binary,
+        {:active, false},
+        {:packet, :raw},
+        {:ip, {127, 0, 0, 1}}
+      ])
+
+    {:ok, port} = :inet.port(listener)
+
+    server =
+      Task.async(fn ->
+        {:ok, socket} = :gen_tcp.accept(listener)
+        _ = :gen_tcp.recv(socket, 0, 1_000)
+
+        case response do
+          :close -> :ok
+          {:send, data} -> :ok = :gen_tcp.send(socket, data)
+        end
+
+        :gen_tcp.close(socket)
+        :gen_tcp.close(listener)
+      end)
+
+    Application.put_env(:caddy, :admin_url, "http://127.0.0.1:#{port}")
+
+    try do
+      fun.()
+    after
+      Task.await(server, 1_000)
+    end
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:caddy, key)
+  defp restore_env(key, value), do: Application.put_env(:caddy, key, value)
 end

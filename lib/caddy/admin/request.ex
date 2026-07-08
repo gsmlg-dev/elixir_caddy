@@ -109,18 +109,22 @@ defmodule Caddy.Admin.Request do
 
   defp do_recv(socket), do: do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{})
 
-  defp do_recv(socket, {:ok, {:http_response, {1, 1}, code, _}}, resp) do
+  defp do_recv(_socket, {:error, reason}, _resp) do
+    {:error, reason}
+  end
+
+  defp do_recv(socket, {:ok, {:http_response, {_major, _minor}, code, _}}, %Request{} = resp) do
     do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{resp | status: code})
   end
 
-  defp do_recv(socket, {:ok, {:http_header, _, h, _, v}}, resp) do
+  defp do_recv(socket, {:ok, {:http_header, _, h, _, v}}, %Request{} = resp) do
     do_recv(socket, :gen_tcp.recv(socket, 0, 5000), %Request{
       resp
       | headers: [{h, v} | resp.headers]
     })
   end
 
-  defp do_recv(socket, {:ok, :http_eoh}, resp) do
+  defp do_recv(socket, {:ok, :http_eoh}, %Request{} = resp) do
     # Now we only have body left.
     # # Depending on headers here you may want to do different things.
     # # The response might be chunked, or upgraded in case you have attached to the container
@@ -130,6 +134,14 @@ defmodule Caddy.Admin.Request do
       "application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
       _ -> {:ok, resp, read_body(socket, resp)}
     end
+  end
+
+  defp do_recv(_socket, {:ok, {:http_error, reason}}, _resp) do
+    {:error, {:http_error, reason}}
+  end
+
+  defp do_recv(_socket, unexpected, _resp) do
+    {:error, {:unexpected_response, unexpected}}
   end
 
   defp read_body(socket, resp) do

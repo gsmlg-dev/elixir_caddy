@@ -4,10 +4,12 @@ defmodule Caddy.Server.ExternalTest do
   import Mox
 
   alias Caddy.Admin.Request
+  alias Caddy.ConfigManager
   alias Caddy.Server.External
 
   # Allow mocks to be called from async processes
   setup :verify_on_exit!
+  setup :set_mox_global
 
   describe "execute_command/1" do
     test "returns error for invalid command" do
@@ -181,5 +183,73 @@ defmodule Caddy.Server.ExternalTest do
 
       assert "" = External.get_caddyfile()
     end
+  end
+
+  describe "health status reporting" do
+    setup do
+      Application.put_env(:caddy, :request_module, Caddy.Admin.RequestMock)
+
+      external_pid = Process.whereis(Caddy.Server.External)
+      if external_pid, do: Mox.allow(Caddy.Admin.RequestMock, self(), external_pid)
+      config_manager_state = :sys.get_state(ConfigManager)
+      external_state = if external_pid, do: :sys.get_state(Caddy.Server.External)
+
+      on_exit(fn ->
+        Application.delete_env(:caddy, :request_module)
+        restore_state(ConfigManager, config_manager_state)
+        restore_state(Caddy.Server.External, external_state)
+      end)
+
+      :ok
+    end
+
+    test "reports failed health checks to ConfigManager" do
+      :sys.replace_state(ConfigManager, &%{&1 | application_state: :synced})
+      :sys.replace_state(External, &%{&1 | caddy_status: :running, config_pushed: true})
+
+      stub(Caddy.Admin.RequestMock, :get, fn "/config/" ->
+        {:error, :econnrefused}
+      end)
+
+      External.health_check()
+
+      assert eventually(fn -> ConfigManager.get_state() == :degraded end)
+    end
+
+    test "reports successful health checks to ConfigManager" do
+      :sys.replace_state(ConfigManager, &%{&1 | application_state: :degraded})
+      :sys.replace_state(External, &%{&1 | caddy_status: :stopped, config_pushed: true})
+
+      stub(Caddy.Admin.RequestMock, :get, fn "/config/" ->
+        {:ok, %Request{status: 200}, %{}}
+      end)
+
+      External.health_check()
+
+      assert eventually(fn -> ConfigManager.get_state() == :synced end)
+    end
+  end
+
+  defp eventually(fun, attempts \\ 20)
+
+  defp eventually(fun, attempts) when attempts > 0 do
+    if fun.() do
+      true
+    else
+      Process.sleep(25)
+      eventually(fun, attempts - 1)
+    end
+  end
+
+  defp eventually(_fun, 0), do: false
+
+  defp restore_state(_process, nil), do: :ok
+
+  defp restore_state(process, state) do
+    if Process.whereis(process) do
+      :sys.replace_state(process, fn _ -> state end)
+    end
+
+    :ok
   end
 end
