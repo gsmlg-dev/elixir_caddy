@@ -9,7 +9,7 @@ Manage caddy configuration in `Elixir`.
 Add this in `deps` in `mix.exs` to install
 
 ```elixir
-{:caddy, "~> 2.3.3"}
+{:caddy, "~> 2.3.4"}
 ```
 
 If caddy bin is set, caddy server will automate start when application start.

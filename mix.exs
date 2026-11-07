@@ -2,7 +2,7 @@ defmodule Caddy.MixProject do
   use Mix.Project
 
   @source_url "https://github.com/gsmlg-dev/elixir_caddy.git"
-  @version "2.3.3"
+  @version "2.3.4"
 
   def project do
     [
