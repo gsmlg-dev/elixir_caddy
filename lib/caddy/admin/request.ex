@@ -131,7 +131,7 @@ defmodule Caddy.Admin.Request do
     # # Now I can receive the response. Because of `:active, false} I need to explicitly
     # # ask for data, otherwise it gets send to the process as messages.
     case :proplists.get_value(:"Content-Type", resp.headers) do
-      "application/json" -> {:ok, resp, Jason.decode!(read_body(socket, resp))}
+      "application/json" -> {:ok, resp, JSON.decode!(read_body(socket, resp))}
       _ -> {:ok, resp, read_body(socket, resp)}
     end
   end

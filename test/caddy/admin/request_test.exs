@@ -34,6 +34,30 @@ defmodule Caddy.Admin.RequestTest do
   end
 
   describe "Response parsing" do
+    test "decodes a JSON response received over the socket" do
+      body = ~s({"enabled":true,"routes":[1,null,"ok"]})
+
+      response =
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{byte_size(body)}\r\n\r\n#{body}"
+
+      with_raw_http_server({:send, response}, fn ->
+        assert {:ok, %Request{status: 200}, %{"enabled" => true, "routes" => [1, nil, "ok"]}} =
+                 Request.get("/config/")
+      end)
+    end
+
+    test "preserves the status and decoded JSON body of an HTTP error response" do
+      body = ~s({"error":"invalid configuration"})
+
+      response =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: #{byte_size(body)}\r\n\r\n#{body}"
+
+      with_raw_http_server({:send, response}, fn ->
+        assert {:ok, %Request{status: 400}, %{"error" => "invalid configuration"}} =
+                 Request.get("/config/")
+      end)
+    end
+
     test "response structure includes status and headers" do
       # The Request struct serves as the response structure
       response = %Request{status: 200, headers: [], body: ""}
